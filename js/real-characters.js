@@ -39,21 +39,69 @@ function prepareModel(model, outfit, tint = null) {
     o.frustumCulled = false; // animated bones can move outside rest-pose bounds
     // Preserve the model's baked skin/hair/fabric normal and roughness textures.
     if (o.material) {
-      const m = o.material.clone();
-      if (/^(Hair)/.test(label)) {
-        m.roughness = 0.8; m.side = THREE.DoubleSide; m.alphaTest = 0.35;
-      } else if (/^(Skin|Body)/.test(label)) {
-        m.roughness = m.roughnessMap ? 0.82 : 0.59;
+      // The upstream MakeHuman/Rocketbox GLBs can tag skin and clothing as
+      // alpha-blended. Leaving that untouched causes semi-transparent faces,
+      // sorting artifacts and a distinctly cartoon-like appearance.
+      const src = o.material;
+      const m = new THREE.MeshPhysicalMaterial({
+        name: src.name, map: src.map, normalMap: src.normalMap,
+        normalScale: src.normalScale, roughnessMap: src.roughnessMap,
+        aoMap: src.aoMap, aoMapIntensity: 1,
+        color: src.color, roughness: src.roughness, metalness: 0,
+        transparent: false, opacity: 1, depthWrite: true,
+        side: THREE.FrontSide,
+      });
+      if (/^Hair/.test(label)) {
+        Object.assign(m, {
+          side: THREE.DoubleSide, alphaTest: 0.48,
+          alphaToCoverage: true, roughness: 0.79,
+          sheen: 0.18, sheenRoughness: 0.75,
+          specularIntensity: 0.28,
+        });
+        m.sheenColor.set('#694a3c');
+      } else if (/^(Eyebrows|Eyelashes)/.test(label)) {
+        Object.assign(m, {
+          transparent: true, depthWrite: false, alphaTest: 0.01,
+          roughness: 0.91, specularIntensity: 0,
+          side: THREE.DoubleSide,
+        });
+        o.renderOrder = 2;
       } else if (/^(Eyes)/.test(label)) {
-        m.roughness = 0.12;
-      } else if (/^(Outfit|Top|Trousers)/.test(label)) {
-        m.roughness = m.roughnessMap ? m.roughness : 0.87;
-        if (m.metalness !== undefined) m.metalness = 0;
+        Object.assign(m, {
+          alphaTest: 0.42, roughness: 0.095,
+          clearcoat: 1, clearcoatRoughness: 0.04,
+        });
+      } else if (/^(Skin|Body)/.test(label)) {
+        Object.assign(m, {
+          roughness: src.normalMap && src.roughnessMap ? 0.88 : 0.53,
+          sheen: src.normalMap ? 0.06 : 0.21,
+          sheenRoughness: 0.76,
+          specularIntensity: 0.42,
+        });
+        m.sheenColor.set('#ffb99e');
+      } else if (/shoe|boot/i.test(label)) {
+        Object.assign(m, {
+          roughness: 0.43, clearcoat: 0.28,
+          clearcoatRoughness: 0.36,
+        });
+      } else {
+        Object.assign(m, {
+          roughness: src.normalMap ? (src.roughness || 0.88) : 0.84,
+          sheen: 0.32, sheenRoughness: 0.88,
+          specularIntensity: 0.32,
+        });
+        m.sheenColor.set('#f2e9d9');
       }
+      // Preserve facial UVs and the true geometry; only adjust surface physics.
       if (label === 'Trousers' && outfit === 'shirt') m.color.multiply(new THREE.Color('#39383d'));
       if (label === 'Top_shirt') m.color.multiply(new THREE.Color('#f6f4ee'));
       if (label === 'Top_tee' && tint) m.color.multiply(new THREE.Color(tint));
-      m.needsUpdate = true; o.material = m;
+      if (label === 'Hair' && tint && outfit === 'tee') {
+        // The reference has natural brunette hair. Do not change head shape.
+        m.color.multiply(new THREE.Color('#865e4a'));
+      }
+      m.needsUpdate = true;
+      o.material = m;
     }
     if (NAMED_PARTS.has(label)) {
       const selected = (outfit === 'shirt' && !hasShirt) || (outfit === 'tee' && !hasTee) ? 'original' : outfit;
