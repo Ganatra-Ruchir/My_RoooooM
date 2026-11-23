@@ -1,70 +1,97 @@
-// First-person authored tour of the actual room. No teleport/cut to third-person.
-// All locations are in the 10 × 10 metre room floor plan (x, z).
-// Narration references the same portfolio records as the drawer and chat.
-const short = (s, n = 38) => String(s || '').length > n ? String(s).slice(0, n - 1) + '…' : String(s || '');
+// Cinematic first-person introduction to the actual portfolio.
+// Narration draws from the same published content as the interactive drawers.
+// The route is deliberately ordered through collision-checked floor positions.
+const short = (s, max = 40) => {
+  const value = String(s || '');
+  return value.length <= max ? value : value.slice(0, max - 1) + '…';
+};
+const readingTime = (text, minimum = 5) =>
+  Math.max(minimum, Math.ceil(String(text).trim().split(/\s+/).length / 2.8 + 1.7));
 
 export function guidedTourPlan({ profile, projects, workbench, certificates, articles }) {
-  const projectNames = projects.slice(0, 2).map(p => p.title).filter(Boolean);
-  const named = projectNames.length === 2
-    ? short(projectNames[0]) + ' and ' + short(projectNames[1])
-    : short(projectNames[0] || 'his featured work');
-  // Each stop uses a safe standing position, a visible focal target and a separate NPC guide location.
-  // Extra route points keep the first-person walkthrough out of furniture.
-  return [
+  const work = Array.isArray(profile.experience) ? profile.experience[0] : null;
+  const school = Array.isArray(profile.education) ? profile.education[0] : null;
+  const skillNames = Object.values(profile.skills || {}).flat();
+  const focusSkills = ['Python', 'SQL', 'Power BI', 'React', 'FastAPI', 'Pandas']
+    .filter(name => skillNames.includes(name));
+  const topProjects = projects.slice(0, 2).map(p => short(p.title, 26));
+
+  const steps = [
     {
-      id: 'welcome', title: 'Welcome to the room', seconds: 5.8,
-      pos: [3.9, 2.95], look: [3.6, 2.65, 1.35], guide: [3.6, 1.35],
-      say: 'Hey, welcome to ' + profile.name + "'s room! I'm Dev, your guide. I'll show you his work, then you'll be free to explore everything yourself.",
+      id: 'welcome', title: 'Welcome to Ruchir’s Room', category: 'WELCOME',
+      pos: [3.9, 2.95], look: [3.6, 2.63, 1.35], guide: [3.6, 1.35],
+      minimum: 8, tags: ['Cinematic tour', 'First-person experience'],
+      say: "Hi there. I'm Mira, your guide. Welcome to Ruchir Ganatra's room. Every wall and shelf tells part of his story. I'll show you around first, and then you can explore freely.",
     },
     {
-      id: 'hallway', title: 'Walk with Dev', seconds: 4.0,
-      pos: [3.7, 0.3], look: [3.0, 2.5, -3.9], guide: [3.7, -0.5],
-      say: 'Follow me. Everything you see here is part of Ruchir’s real portfolio, not just decoration.',
+      id: 'about', title: 'Meet Ruchir Ganatra', category: 'ABOUT RUCHIR',
+      pos: [3.7, 0.3], look: [-0.75, 2.6, -1.85], guide: [3.7, -0.5],
+      minimum: 10, image: profile.photo,
+      tags: ['Ahmedabad', 'Data & Digital Systems Analyst', 'Information Technology'],
+      say: "This is Ruchir Ganatra, based in Ahmedabad. He works as a " +
+        (work?.title || profile.role) + (school ? ", and studies " + school.title + " at " + school.where + "." : ".") +
+        " His focus is turning complicated information into practical systems people can actually use.",
     },
     {
-      id: 'projects', title: 'Featured projects', seconds: 6.4,
-      pos: [3.12, -2.35], look: [3.0, 2.7, -4.58], guide: [2.4, -2.75],
-      say: 'This shelf holds projects built by Ruchir, including ' + named + '. After the tour, select a project to read the story and open its links.',
+      id: 'tools', title: 'The tools he uses', category: 'TECHNICAL SKILLS',
+      pos: [3.12, -2.35], look: [1.4, 3.45, 4.94], guide: [2.4, -2.75],
+      minimum: 10, tags: focusSkills,
+      say: "Let's start with his toolkit. Ruchir uses " +
+        focusSkills.slice(0, 3).join(', ') + ", alongside web development tools like React and FastAPI. He also works with analytics, machine learning and data visualisation. The whiteboard holds the fuller list.",
     },
     {
-      id: 'workbench', title: 'Experiments and tools', seconds: 4.8,
-      pos: [1.47, -1.5], look: [3.2, 1.9, -4.4], guide: [1.15, -0.7],
-      say: 'The workbench also contains ' + workbench.length + ' smaller tools and analyses. These are practical systems he designed, tested and improved.',
+      id: 'projects', title: 'Projects built by Ruchir', category: 'FEATURED PROJECTS',
+      pos: [1.47, -1.5], look: [3.05, 2.4, -4.55], guide: [1.15, -0.7],
+      minimum: 10, tags: topProjects,
+      say: "Now for the projects. Every featured build here was made by Ruchir. Among them are " +
+        topProjects.join(' and ') +
+        ". You can inspect each project after the tour, explore its technology stack, and open the live app or source code.",
     },
     {
-      id: 'desk', title: 'The creative desk', seconds: 5.2,
-      pos: [1.43, -0.35], look: [-0.75, 2.45, -1.85], guide: [0.0, -0.15],
-      say: "Here's his desk. This is where data ideas, dashboards, and applications take shape. There are also " + articles.length + ' articles you can read.',
+      id: 'workbench', title: 'His workbench', category: 'EXPERIMENTS',
+      pos: [1.43, -0.35], look: [3.15, 1.95, -4.5], guide: [0, -0.15],
+      minimum: 8, tags: [workbench.length + ' tools & experiments', 'Problem solving'],
+      say: "Beyond the main projects, the workbench contains " +
+        workbench.length + " additional tools and experiments. They show how Ruchir approaches real-world problems, tests ideas, and keeps refining what he builds.",
     },
     {
-      id: 'corridor', title: 'Meet Ruchir', seconds: 3.9,
-      pos: [-1.95, 0.14], look: [-3.17, 2.55, -2.5], guide: [-2.7, -0.35],
-      say: 'And there’s Ruchir. Walk up and talk to him later to learn about his experience, interests and work.',
+      id: 'articles', title: 'Writing and ideas', category: 'ARTICLES',
+      pos: [-1.95, 0.14], look: [-0.4, 2.05, -1.95], guide: [-2.7, -0.35],
+      minimum: 8, tags: [articles.length + ' articles', 'Learning in public'],
+      say: "Over here is his desk. Ruchir also shares what he learns through " +
+        articles.length + " articles. You can pick one up, read the story, and visit the original publication.",
     },
     {
-      id: 'certificates', title: 'Certificates', seconds: 5.8,
-      pos: [-3.37, -0.13], look: [-4.9, 3.6, 0.08], guide: [-3.35, 0.86],
-      say: 'This wall displays ' + certificates.length + ' of his certificates. You can open the originals and see what he learned from each.',
+      id: 'certificates', title: 'Certificates and learning', category: 'ACHIEVEMENTS',
+      pos: [-3.37, -0.13], look: [-4.90, 3.63, 0.08], guide: [-3.35, 0.86],
+      minimum: 9, tags: [certificates.length + ' certificates', 'Google', 'IBM', 'Kaggle'],
+      say: "This is his achievement wall, featuring " +
+        certificates.length + " certificates. They cover subjects including analytics, artificial intelligence, Python, and cloud computing. Open any frame later to see its details and original document.",
     },
     {
-      id: 'secrets', title: 'Interactive room', seconds: 5.8,
-      pos: [-3.52, 1.33], look: [-4.52, 1.95, 2.25], guide: [-3.12, 2.48],
-      say: 'The room is interactive too. Find the record player, the cat, the lamp, and the little objects with stories hidden inside.',
+      id: 'interactive', title: 'A room you can interact with', category: 'ROOM DETAILS',
+      pos: [-3.52, 1.33], look: [-4.52, 2.0, 2.25], guide: [-3.12, 2.48],
+      minimum: 8, tags: ['Record player', 'Desk lamp', 'The cat'],
+      say: "There's more than a portfolio here. The record player, the desk lamp, the cat and other small objects all respond when you interact. Some even have hidden surprises.",
     },
     {
-      id: 'whiteboard', title: 'Skills and contact', seconds: 5.8,
-      pos: [-1.1, 3.78], look: [1.4, 3.4, 4.95], guide: [-0.2, 3.6],
-      say: "The whiteboard shows Ruchir's skills. You can also explore his background and find ways to contact him from the navigation.",
+      id: 'contact', title: 'Experience and contact', category: 'WORK & CONTACT',
+      pos: [-1.1, 3.78], look: [1.4, 3.35, 4.95], guide: [-0.2, 3.6],
+      minimum: 9, tags: ['Experience', 'Résumé', 'Get in touch'],
+      say: "That brings us to Ruchir's experience, education and contact details. The navigation lets you revisit any section, download his résumé, or get in touch about a project.",
     },
     {
-      id: 'return', title: 'Back to the entrance', seconds: 4.6,
+      id: 'return', title: 'Your story begins here', category: 'FINAL STOP',
       pos: [3.76, 4.03], look: [3.1, 2.55, 2.4], guide: [4.3, 3.85],
-      say: 'That’s the tour. We’re heading back to the entrance, where you can explore at your own pace.',
+      minimum: 5, tags: ['Almost ready'],
+      say: "We're back at the entrance. In a moment, this entire room is yours to explore.",
     },
     {
-      id: 'ready', title: 'You are in control', seconds: 4.4,
+      id: 'ready', title: 'Free exploration unlocked', category: 'YOUR TURN',
       pos: [3.9, 2.95], look: [3.6, 2.6, 1.35], guide: [3.6, 1.35],
-      say: 'And that is the full tour! I am handing over control now. Use W, A, S, D to walk, the mouse to look around, and E to interact. Have fun!',
+      minimum: 7, tags: ['WASD to move', 'Mouse to look', 'E to interact'],
+      say: "That's the tour. Now take control: click Start Exploring to capture your mouse, walk with W, A, S and D, and use E to interact with anything you discover. Enjoy!",
     },
   ];
+  return steps.map(step => ({ ...step, seconds: readingTime(step.say, step.minimum) }));
 }
