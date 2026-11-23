@@ -125,6 +125,24 @@ export function createNPCSystem({ scene, onGreet = () => {}, reducedMotion = fal
   function update(time, dt, player, playerSpeed = 0) {
     for (const a of agents) {
       const p = a.root.position, d = distance2(p, player);
+      let walking = 0;
+      if (a.guideTarget) {
+        // Authored guide overrides autonomous roaming during the uninterruptible first-person intro.
+        const dx = a.guideTarget.x - p.x, dz = a.guideTarget.z - p.z;
+        const distance = Math.hypot(dx, dz);
+        if (distance > 0.09) {
+          const step = Math.min(distance, dt * 2.2);
+          const ox = p.x, oz = p.z;
+          p.x += dx / distance * step; p.z += dz / distance * step;
+          collide(p);
+          walking = Math.min(1, Math.hypot(p.x - ox, p.z - oz) / Math.max(step, 0.001));
+          a.targetYaw = Math.atan2(dx, dz);
+          a.state = 'roam';
+        } else {
+          a.state = 'observe';
+          a.targetYaw = Math.atan2(player.x - p.x, player.z - p.z);
+        }
+      } else {
       const visible = d < 4.2 && canSee(p, player);
       const sight = visible && (Math.cos(Math.atan2(player.x - p.x, player.z - p.z) - a.root.rotation.y) > -0.45 || d < 2);
       // Memory-based social reaction: one greeting per approach, then cooldown.
@@ -153,7 +171,6 @@ export function createNPCSystem({ scene, onGreet = () => {}, reducedMotion = fal
           setState(a, 'roam', time + 12);
         }
       }
-      let walking = 0;
       if (a.state === 'roam') {
         const wp = a.spec.waypoints[a.waypoint], dx = wp[0] - p.x, dz = wp[1] - p.z;
         const len = Math.hypot(dx, dz);
@@ -175,6 +192,7 @@ export function createNPCSystem({ scene, onGreet = () => {}, reducedMotion = fal
             a.blocked = 0;
           }
         }
+      }
       }
       let diff = Math.atan2(Math.sin(a.targetYaw - a.root.rotation.y), Math.cos(a.targetYaw - a.root.rotation.y));
       a.root.rotation.y += diff * Math.min(1, dt * 4);
@@ -200,6 +218,18 @@ export function createNPCSystem({ scene, onGreet = () => {}, reducedMotion = fal
   }
   return {
     update, interact,
+    setTourGuide(index, x, z, snap = false) {
+      const a = agents[index]; if (!a) return;
+      if (!a.guideTarget) a.guideTarget = new THREE.Vector3();
+      a.guideTarget.set(x, 0, z);
+      if (snap) { a.root.position.set(x, 0, z); a.blocked = 0; }
+    },
+    releaseTourGuide(index) {
+      const a = agents[index]; if (!a) return;
+      a.guideTarget = null;
+      a.state = 'idle'; a.stateUntil = 0;
+      a.greeted = true; a.cooldown = 20;
+    },
     attachVisual(index, model) {
       const a = agents[index];
       if (!a || !model) return;
