@@ -612,11 +612,13 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
     },
   });
   if (!charUrl) realCharacters.load('ruchir', [STANDEE_POS.x, STANDEE_POS.z], { outfit: 'shirt', scale: 1.56 });
-  // Defer companion downloads slightly so the main character takes priority.
-  setTimeout(() => {
-    realCharacters.load('maya', [2.75, -2.8], { outfit: 'tee', scale: 1.55, tint: '#b4c9a4' });
-    realCharacters.load('dev', [-2.9, 1.2], { outfit: 'shirt', scale: 1.55 });
-  }, 200);
+  // Mira is the entire introduction. Load her model immediately and expose the
+  // promise so the opening scene never shows an empty avatar or a substituted 2D still.
+  const guideReady = realCharacters.load('maya', [2.75, -2.8], {
+    outfit: 'tee', scale: 1.55, tint: '#b4c9a4',
+  });
+  // Secondary NPC may stream in afterward without delaying the tour.
+  setTimeout(() => realCharacters.load('dev', [-2.9, 1.2], { outfit: 'shirt', scale: 1.55 }), 500);
   const walkRing = mesh(new THREE.RingGeometry(0.16, 0.26, 32), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false }), 0, 0.03, 0, scene, { cast: false, receive: false });
   walkRing.rotation.x = -Math.PI / 2;
   walkRing.raycast = () => {};
@@ -1449,6 +1451,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
       if (invertY !== undefined) invertLookY = !!invertY;
     },
     // game controls
+    whenGuideReady() { return guideReady; },
     startGuidedTour: beginGuidedTour,
     get isTouring() { return guided.active; },
     get tourFinished() { return guided.finished; },
