@@ -13,12 +13,12 @@ export function guidedTourPlan({ profile, projects, workbench, certificates, art
   return [
     {
       id: 'welcome', title: 'Welcome to the room', seconds: 5.8,
-      pos: [3.9, 2.95], look: [3.85, 2.65, 1.2], guide: [3.85, 1.2],
+      pos: [3.9, 2.95], look: [3.6, 2.65, 1.35], guide: [3.6, 1.35],
       say: 'Hey, welcome to ' + profile.name + "'s room! I'm Dev, your guide. I'll show you his work, then you'll be free to explore everything yourself.",
     },
     {
       id: 'hallway', title: 'Walk with Dev', seconds: 4.0,
-      pos: [3.92, 0.3], look: [3.0, 2.5, -3.9], guide: [3.7, -0.5],
+      pos: [3.7, 0.3], look: [3.0, 2.5, -3.9], guide: [3.7, -0.5],
       say: 'Follow me. Everything you see here is part of Ruchir’s real portfolio, not just decoration.',
     },
     {
@@ -63,7 +63,7 @@ export function guidedTourPlan({ profile, projects, workbench, certificates, art
     },
     {
       id: 'ready', title: 'You are in control', seconds: 4.4,
-      pos: [3.9, 2.95], look: [3.85, 2.6, 1.2], guide: [3.85, 1.2],
+      pos: [3.9, 2.95], look: [3.6, 2.6, 1.35], guide: [3.6, 1.35],
       say: 'You’re free to roam now! Use W, A, S, D to walk, drag or move your mouse to look around, and press E to interact. Have fun!',
     },
   ];
