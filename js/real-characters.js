@@ -8,7 +8,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 const SOURCE = 'https://cdn.jsdelivr.net/gh/memoriesrohit/avatar-studio@2fd9ec82fbe1613d40ae38aadcca3f410725f740/models/';
 const CATALOG = Object.freeze({
   ruchir: 'arjun_smart.glb', // realistic South Asian-featured model, placeholder for a custom likeness
-  maya: 'emma_casual.glb', // real skinned woman; reference-photo likeness remains a still image, not fabricated 3D
+  // maya is loaded exclusively by js/vrm-meera.js from the exact user-uploaded VRM.
   dev: 'ryan_smart.glb',
 });
 const NAMED_PARTS = new Set([
