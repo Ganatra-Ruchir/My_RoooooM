@@ -333,6 +333,10 @@ export function createNPCSystem({ scene, onGreet = () => {}, reducedMotion = fal
       a.state = 'idle'; a.stateUntil = 0;
       a.greeted = true; a.cooldown = 20;
     },
+    hidePlaceholder(index) {
+      const a = agents[index];
+      if (a) a.body.visible = false;
+    },
     attachVisual(index, model) {
       const a = agents[index];
       if (!a || !model) return;
