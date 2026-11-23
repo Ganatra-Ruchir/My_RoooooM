@@ -583,6 +583,9 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
   });
   // Replace primitive people with genuine 3D human meshes, skinned skeletons,
   // real fabric/skin maps and bundled motion-capture animations.
+  // Hide the procedural mannequin immediately: never present it as Meera
+  // during VRM streaming or when her original asset cannot be loaded.
+  npcSystem.hidePlaceholder(0);
   const realCharacters = createRealCharacters({
     scene,
     onLoaded(id, rig) {
@@ -607,7 +610,9 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
       }
     },
     onError(id, error) {
-      console.warn('Realistic character could not load, using fallback:', id, error);
+      console.error(id === 'maya'
+        ? 'Meera VRM could not be loaded; guide remains hidden (no impostor avatar).'
+        : 'Realistic character could not load, using fallback:', id, error);
       if (id === 'ruchir' && !charUrl) avatar.person.visible = true;
     },
   });
@@ -1362,7 +1367,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
       ruchir: talking ? 'Talk' : t < greetUntil ? 'Wave' : 'Idle',
       maya: guided.active ? (npcSystem.getState(0) === 'roam' ? 'Walk' : 'Talk') : npcMove(npcSystem.getState(0)),
       dev: npcMove(npcSystem.getState(1)),
-    }, near ? visitorHead : null);
+    }, visitorHead);
     const avatarHot = !!hovered && ['avatar', 'talk'].includes(hovered.userData.hit.kind);
     if (avatar.person.visible) {
       avatar.update(t, dt, {
