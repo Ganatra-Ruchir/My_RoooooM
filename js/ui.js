@@ -737,6 +737,7 @@ export function createUI({ room = null }) {
   // ---------- Text version ----------
   list.innerHTML = listView(!!room);
   function toggleList(show) {
+    if (room?.isTouring && show) return; // no navigation interrupts the authored introduction
     list.hidden = !show;
     body.classList.toggle('list-open', show);
     if (show) { close(); hidePop(); if (chat.isOpen) chat.close(); releaseMouse(); room?.pause?.(); list.scrollTop = 0; list.focus?.(); }
