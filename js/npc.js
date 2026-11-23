@@ -5,7 +5,7 @@ import { collide } from './player.js';
 
 const PEOPLE = [
   {
-    name: 'Maya', role: 'Creative collaborator',
+    name: 'Mira', role: 'Cinematic room guide',
     seed: 17, skin: 0xc78d68, hair: 0x201815, jacket: 0x715747, shirt: 0xe8cbb7, pants: 0x282833,
     waypoints: [[2.75, -2.8], [3.45, -0.8], [3.65, 1.25], [2.5, 3.6]],
     lines: [
@@ -120,7 +120,7 @@ export function createNPCSystem({ scene, onGreet = () => {}, reducedMotion = fal
     state: 'idle', stateUntil: 2 + index, waypoint: 0, cooldown: 0,
     animation: 0, moveMix: 0, greeted: false, line: 0, blocked: 0, targetYaw: index ? 0.4 : -0.9,
   }));
-  agents.forEach(a => scene.add(a.root));
+  agents.forEach(a => { scene.add(a.root); a.body.visible = false; }); // never flash blocky cartoon NPCs before real meshes finish loading
   function setState(a, state, until) { if (a.state !== state) a.state = state; a.stateUntil = until; }
   function update(time, dt, player, playerSpeed = 0) {
     for (const a of agents) {
