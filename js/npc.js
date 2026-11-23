@@ -114,6 +114,105 @@ function canSee(a, b) {
   }
   return true;
 }
+
+// Grid-based local navigation for authored tours. A* avoids walking through
+// bookcases, walls, the sofa, the coffee table and the desk.
+const GRID_N = 25, CELL = 0.36, ORIGIN = -4.32;
+const NEIGHBORS = [
+  [1, 0], [-1, 0], [0, 1], [0, -1],
+  [1, 1], [1, -1], [-1, 1], [-1, -1],
+];
+const gridId = (i, j) => j * GRID_N + i;
+const gridCoord = id => [id % GRID_N, (id / GRID_N) | 0];
+const gridWorld = id => {
+  const [i, j] = gridCoord(id);
+  return [ORIGIN + i * CELL, ORIGIN + j * CELL];
+};
+function walkablePoint(x, z) {
+  const p = new THREE.Vector3(x, 0, z);
+  collide(p);
+  return Math.hypot(p.x - x, p.z - z) < 0.035;
+}
+function safeLine(a, b) {
+  const d = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  for (let t = 0; t <= 1; t += 0.18 / Math.max(d, 0.18)) {
+    if (!walkablePoint(a[0] + (b[0] - a[0]) * Math.min(1, t),
+                       a[1] + (b[1] - a[1]) * Math.min(1, t))) return false;
+  }
+  return walkablePoint(b[0], b[1]);
+}
+function routeGuide(start, end) {
+  if (safeLine(start, end)) return [end];
+  const valid = new Uint8Array(GRID_N * GRID_N);
+  for (let id = 0; id < valid.length; id++) {
+    const [x, z] = gridWorld(id);
+    valid[id] = walkablePoint(x, z) ? 1 : 0;
+  }
+  function nearest(loc) {
+    let best = -1, bestDist = Infinity;
+    for (let id = 0; id < valid.length; id++) {
+      if (!valid[id]) continue;
+      const [x, z] = gridWorld(id);
+      const d = (x - loc[0]) ** 2 + (z - loc[1]) ** 2;
+      if (d < bestDist) { bestDist = d; best = id; }
+    }
+    return best;
+  }
+  const source = nearest(start), dest = nearest(end);
+  if (source < 0 || dest < 0) return [end];
+  const dist = (id, other) => {
+    const [i, j] = gridCoord(id), [x, y] = gridCoord(other);
+    return Math.hypot(x - i, y - j);
+  };
+  const g = new Float32Array(valid.length).fill(Infinity);
+  const h = new Float32Array(valid.length).fill(Infinity);
+  const prev = new Int32Array(valid.length).fill(-1);
+  const opened = new Uint8Array(valid.length), closed = new Uint8Array(valid.length);
+  const open = [source]; opened[source] = 1; g[source] = 0; h[source] = dist(source, dest);
+  for (let steps = 0; open.length && steps < 1500; steps++) {
+    let smallest = 0;
+    for (let n = 1; n < open.length; n++)
+      if (g[open[n]] + h[open[n]] < g[open[smallest]] + h[open[smallest]]) smallest = n;
+    const id = open.splice(smallest, 1)[0];
+    opened[id] = 0; closed[id] = 1;
+    if (id === dest) break;
+    const [i, j] = gridCoord(id);
+    for (const [di, dj] of NEIGHBORS) {
+      const ni = i + di, nj = j + dj;
+      if (ni < 0 || nj < 0 || ni >= GRID_N || nj >= GRID_N) continue;
+      const next = gridId(ni, nj);
+      if (!valid[next] || closed[next]) continue;
+      // No diagonal cuts across the edge of a collision box.
+      if (di && dj && (!valid[gridId(i + di, j)] || !valid[gridId(i, j + dj)])) continue;
+      const newG = g[id] + (di && dj ? 1.41421356237 : 1);
+      if (newG >= g[next]) continue;
+      prev[next] = id; g[next] = newG; h[next] = dist(next, dest);
+      if (!opened[next]) { open.push(next); opened[next] = 1; }
+    }
+  }
+  if (source !== dest && prev[dest] < 0) return [end];
+  const backwards = [];
+  let current = dest;
+  while (current !== source && current >= 0 && backwards.length < valid.length) {
+    backwards.push(gridWorld(current));
+    current = prev[current];
+  }
+  backwards.reverse();
+  // Remove unnecessary waypoints when straight segment is clear.
+  const points = [], all = [...backwards, end];
+  let from = start, index = 0;
+  while (index < all.length) {
+    let furthest = index;
+    for (let k = all.length - 1; k > index; k--) {
+      if (safeLine(from, all[k])) { furthest = k; break; }
+    }
+    points.push(all[furthest]);
+    from = all[furthest];
+    index = furthest + 1;
+  }
+  return points;
+}
+
 export function createNPCSystem({ scene, onGreet = () => {}, reducedMotion = false }) {
   const agents = PEOPLE.map((spec, index) => ({
     ...makeNPC(spec, index), spec, index, seed: spec.seed,
@@ -128,8 +227,10 @@ export function createNPCSystem({ scene, onGreet = () => {}, reducedMotion = fal
       let walking = 0;
       if (a.guideTarget) {
         // Authored guide overrides autonomous roaming during the uninterruptible first-person intro.
-        const dx = a.guideTarget.x - p.x, dz = a.guideTarget.z - p.z;
+        const next = a.guidePath?.[0] || [a.guideTarget.x, a.guideTarget.z];
+        const dx = next[0] - p.x, dz = next[1] - p.z;
         const distance = Math.hypot(dx, dz);
+        if (distance < 0.16 && a.guidePath?.length) a.guidePath.shift();
         if (distance > 0.09) {
           const step = Math.min(distance, dt * 2.2);
           const ox = p.x, oz = p.z;
@@ -221,12 +322,14 @@ export function createNPCSystem({ scene, onGreet = () => {}, reducedMotion = fal
     setTourGuide(index, x, z, snap = false) {
       const a = agents[index]; if (!a) return;
       if (!a.guideTarget) a.guideTarget = new THREE.Vector3();
-      a.guideTarget.set(x, 0, z);
+      const changed = snap || a.guideTarget.distanceToSquared(new THREE.Vector3(x, 0, z)) > 0.03;
       if (snap) { a.root.position.set(x, 0, z); a.blocked = 0; }
+      if (changed) a.guidePath = snap ? [] : routeGuide([a.root.position.x, a.root.position.z], [x, z]);
+      a.guideTarget.set(x, 0, z);
     },
     releaseTourGuide(index) {
       const a = agents[index]; if (!a) return;
-      a.guideTarget = null;
+      a.guideTarget = null; a.guidePath = null;
       a.state = 'idle'; a.stateUntil = 0;
       a.greeted = true; a.cooldown = 20;
     },
