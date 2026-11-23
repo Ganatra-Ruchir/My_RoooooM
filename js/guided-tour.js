@@ -93,5 +93,23 @@ export function guidedTourPlan({ profile, projects, workbench, certificates, art
       say: "That's the tour. Now take control: click Start Exploring to capture your mouse, walk with W, A, S and D, and use E to interact with anything you discover. Enjoy!",
     },
   ];
-  return steps.map(step => ({ ...step, seconds: readingTime(step.say, step.minimum) }));
+  // Two independently spoken beats per scene: Mira's face first, then the subject.
+  // Keep the original full narration as data but schedule each beat with its shot.
+  return steps.map(step => {
+    const sentences = step.say.match(/[^.!?]+(?:[.!?]+|$)/g)?.map(x => x.trim()).filter(Boolean) || [step.say];
+    const first = sentences[0] || step.say;
+    const second = sentences.slice(1).join(' ').trim();
+    const hasReveal = !['welcome', 'return', 'ready'].includes(step.id) && !!second;
+    const faceWords = first.split(/\s+/).length;
+    const restWords = second.split(/\s+/).length;
+    const beatSwitch = hasReveal
+      ? Math.max(0.39, Math.min(0.58, faceWords / Math.max(1, faceWords + restWords) + 0.1))
+      : 1;
+    return {
+      ...step, seconds: readingTime(step.say, step.minimum),
+      speakerSay: hasReveal ? first : step.say,
+      exhibitSay: hasReveal ? second : '',
+      beatSwitch,
+    };
+  });
 }
