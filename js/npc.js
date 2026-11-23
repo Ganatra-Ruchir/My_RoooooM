@@ -200,6 +200,14 @@ export function createNPCSystem({ scene, onGreet = () => {}, reducedMotion = fal
   }
   return {
     update, interact,
+    attachVisual(index, model) {
+      const a = agents[index];
+      if (!a || !model) return;
+      a.body.visible = false;
+      a.root.add(model);
+      model.position.set(0, 0, 0);
+      model.rotation.set(0, 0, 0);
+    },
     getState(index) { return agents[index]?.state || null; },
     anchors() { return agents.map(a => a.root.position.clone().setY(2.9)); },
     targets: agents.map((a, index) => ({
