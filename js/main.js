@@ -80,6 +80,7 @@ async function boot() {
         onHover: (hit, e) => ui?.onHover(hit, e),
         onFrame: () => ui?.updateMarkers(),
         onWriting: (a) => ui?.setWriting(a),
+        onNpcGreet: (index, message) => ui?.showNpcLine(index, message),
       },
     });
   } catch (err) {
