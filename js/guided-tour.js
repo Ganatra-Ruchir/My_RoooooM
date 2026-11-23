@@ -27,7 +27,7 @@ export function guidedTourPlan({ profile, projects, workbench, certificates, art
       image: profile.photo,
       tags: ['Ahmedabad', 'Information Technology', 'Digital systems'],
       speakerSay: "See the person over there? That's Ruchir Ganatra—the one who built all this.",
-      exhibitSay: "He's from Ahmedabad and studies Information Technology. He works with real programme data, creates dashboards, and builds apps that make complicated information easier to use.",
+      exhibitSay: "He's based in Ahmedabad and studies Information Technology. He works with real programme data, creates dashboards, and builds apps that make complicated information easier to use.",
     },
     {
       id: 'tools', title: 'The tools he uses', category: 'TECHNICAL SKILLS',
