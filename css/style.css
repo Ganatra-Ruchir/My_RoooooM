@@ -906,8 +906,8 @@ body:not(.tour-active) .world-hud {
     width: auto; display: grid; grid-template-columns: minmax(0, 130px) 1fr;
     gap: 0 12px; padding: 10px;
   }
-  .guide-cinematic-image { grid-column: 1; grid-row: 1 / 5; aspect-ratio: 4 / 5; margin: 0; }
-  .guide-cinematic-image img { object-fit: cover; object-position: 54% center; }
+  .guide-cinematic-image { grid-column: 1; grid-row: 1 / 5; aspect-ratio: 16 / 9; margin: 0; align-self: start; }
+  .guide-cinematic-image img { object-fit: contain; object-position: center; }
   .guide-cinematic-image::after { inset: 50% 0 0; }
   .guide-image-label { left: 6px; bottom: 6px; font-size: 8px; letter-spacing: .06em; }
   .guided-tour-head, .guided-tour-category, .guided-tour-panel p,
