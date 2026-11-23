@@ -13,7 +13,7 @@ export function guidedTourPlan({ profile, projects, workbench, certificates, art
   return [
     {
       id: 'welcome', title: 'Welcome to the room', seconds: 5.8,
-      pos: [3.9, 2.95], look: [3.12, 2.65, 2.15], guide: [3.1, 2.25],
+      pos: [3.9, 2.95], look: [3.85, 2.65, 1.2], guide: [3.85, 1.2],
       say: 'Hey, welcome to ' + profile.name + "'s room! I'm Dev, your guide. I'll show you his work, then you'll be free to explore everything yourself.",
     },
     {
@@ -33,7 +33,7 @@ export function guidedTourPlan({ profile, projects, workbench, certificates, art
     },
     {
       id: 'desk', title: 'The creative desk', seconds: 5.2,
-      pos: [1.43, -0.35], look: [-0.75, 2.45, -1.85], guide: [0.2, 0.3],
+      pos: [1.43, -0.35], look: [-0.75, 2.45, -1.85], guide: [0.0, -0.15],
       say: "Here's his desk. This is where data ideas, dashboards, and applications take shape. There are also " + articles.length + ' articles you can read.',
     },
     {
@@ -58,12 +58,12 @@ export function guidedTourPlan({ profile, projects, workbench, certificates, art
     },
     {
       id: 'return', title: 'Back to the entrance', seconds: 4.6,
-      pos: [3.76, 4.03], look: [3.1, 2.55, 2.4], guide: [3.15, 3.17],
+      pos: [3.76, 4.03], look: [3.1, 2.55, 2.4], guide: [3.85, 3.05],
       say: 'That’s the tour. We’re heading back to the entrance, where you can explore at your own pace.',
     },
     {
       id: 'ready', title: 'You are in control', seconds: 4.4,
-      pos: [3.9, 2.95], look: [3.12, 2.6, 2.1], guide: [3.1, 2.25],
+      pos: [3.9, 2.95], look: [3.85, 2.6, 1.2], guide: [3.85, 1.2],
       say: 'You’re free to roam now! Use W, A, S, D to walk, drag or move your mouse to look around, and press E to interact. Have fun!',
     },
   ];
