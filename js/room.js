@@ -35,7 +35,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
   renderer.setClearColor(0x000000, 0);
 
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 200);
+  const camera = new THREE.PerspectiveCamera(32, 1, 0.065, 200);
   // Restrained bloom lifts neon, watch highlights and warm practical lights.
   // Skip post FX on touch / low-memory devices to protect frame rate.
   const cinematic = !lowPower && !reducedMotion;
@@ -61,6 +61,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
   controls.enablePan = false;
+  controls.enableZoom = false; // never let the mouse wheel unexpectedly zoom first-person
   controls.minDistance = 4;
   controls.maxDistance = 36;
   controls.minPolarAngle = 0.45;
@@ -827,6 +828,14 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
   const EYE = 2.75;
   const cam = { yaw: 0.93, pitch: -0.06 };
   let lookSensitivity = 1.0, invertLookY = false;
+  function applyMouseLook(dx, dy) {
+    if (mode !== 'follow' || talking || guided.active) return;
+    lookGoal = null;
+    const f = 0.00185 * lookSensitivity;
+    cam.yaw -= THREE.MathUtils.clamp(dx, -140, 140) * f;
+    cam.pitch = THREE.MathUtils.clamp(cam.pitch -
+      THREE.MathUtils.clamp(dy, -140, 140) * f * (invertLookY ? -1 : 1), -1.15, 1.05);
+  }
 
   // Auto-play guided first-person tour. Tour updates the visitor's position,
   // orientation and guide NPC; no orbit or third-person camera is used.
@@ -850,6 +859,11 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
     guided.last.copy(guided.from);
     player.target = null; player.vel.set(0, 0, 0); player.speed = 0;
     movementLocked = true; talking = false; lookGoal = null;
+    inset.x = inset.y = inset.tx = inset.ty = 0;
+    camera.clearViewOffset();
+    camera.fov = fpFov();
+    camera.near = 0.065;
+    camera.updateProjectionMatrix();
     const start = tourPlan[0];
     npcSystem.setTourGuide(0, start.guide[0], start.guide[1], true);
     announceTourStop(0);
@@ -956,6 +970,13 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
     } else {
       camera.position.copy(fpPos);
       camera.quaternion.copy(fpQuat);
+      // Critical fix: starting in first person used to leave the camera at
+      // the 26-degree overview lens, giving an unusable ultra-zoomed view.
+      const immersiveFov = fpFov();
+      if (Math.abs(camera.fov - immersiveFov) > 0.01) {
+        camera.fov = immersiveFov;
+        camera.updateProjectionMatrix();
+      }
     }
     // keep the orbit target in front of you, so leaving first person starts from a sensible place
     controls.target.set(fpPos.x - Math.sin(cam.yaw) * 3, EYE, fpPos.z - Math.cos(cam.yaw) * 3);
@@ -967,7 +988,8 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
   const inset = { x: 0, y: 0, tx: 0, ty: 0 };
   let W = 1, H = 1;
   function applyViewOffset() {
-    if (Math.abs(inset.x) < 0.5 && Math.abs(inset.y) < 0.5) camera.clearViewOffset();
+    // Inset offsets are only for interactive side drawers, never for a tour.
+    if (guided.active || (Math.abs(inset.x) < 0.5 && Math.abs(inset.y) < 0.5)) camera.clearViewOffset();
     else camera.setViewOffset(W, H, inset.x, inset.y, W, H);
   }
   function resize() {
@@ -1010,10 +1032,15 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
     hooks.onHover?.(o ? o.userData.hit : null, e);
   }
   let down = null, pinchD = 0;
+  let lastFreePointer = null;
   const pointers = new Map();
   canvas.addEventListener('pointerdown', (e) => {
     if (guided.active) return;
     down = { x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, t: performance.now() };
+    lastFreePointer = { x: e.clientX, y: e.clientY };
+    if (e.pointerType !== 'mouse' && canvas.setPointerCapture) {
+      try { canvas.setPointerCapture(e.pointerId); } catch { /* pointer may be cancelled */ }
+    }
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     pinchD = 0;
   });
@@ -1023,13 +1050,23 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
     if (document.pointerLockElement === canvas) return; // mouse look is handled by look()
     if (mode === 'follow' && down && (e.buttons || e.pointerType !== 'mouse') && pointers.size === 1 && !talking) {
       lookGoal = null;
-      // drag to look around (like grabbing the view, as in Street View)
-      // Same sensitivity as pointer-lock mode. Fallback drag is not accelerated.
-      const factor = 0.00185 * lookSensitivity;
-      cam.yaw -= (e.clientX - down.lx) * factor;
-      cam.pitch = THREE.MathUtils.clamp(cam.pitch -
-        (e.clientY - down.ly) * factor * (invertLookY ? -1 : 1), -1.15, 1.05);
+      // One-to-one horizontal and vertical swipe, including on touchscreens.
+      // Drag left = look left, drag up = look up. No mouse wheel required.
+      applyMouseLook(e.clientX - down.lx, e.clientY - down.ly);
+      if (e.pointerType === 'touch' && e.cancelable) e.preventDefault();
       down.lx = e.clientX; down.ly = e.clientY;
+      setHovered(null, e);
+      return;
+    }
+    // Browser denied pointer lock? Looking around still works from a normal
+    // mouse swipe over the 3D canvas, without holding a button or scrolling.
+    if (mode === 'follow' && e.pointerType === 'mouse' && !down &&
+        !document.pointerLockElement && document.body.classList.contains('at-game') &&
+        !talking) {
+      if (lastFreePointer) {
+        applyMouseLook(e.clientX - lastFreePointer.x, e.clientY - lastFreePointer.y);
+      }
+      lastFreePointer = { x: e.clientX, y: e.clientY };
       setHovered(null, e);
       return;
     }
@@ -1037,12 +1074,18 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
     if (e.buttons) { setHovered(null, e); return; }
     setHovered(pick(e.clientX, e.clientY), e);
   });
-  canvas.addEventListener('pointerleave', () => setHovered(null));
+  canvas.addEventListener('pointerleave', () => { setHovered(null); lastFreePointer = null; });
+  canvas.addEventListener('pointerenter', () => { lastFreePointer = null; });
+  canvas.addEventListener('wheel', (e) => {
+    // GTA-like 3D camera: wheel never controls vertical gaze or zoom.
+    if (mode === 'follow' && e.cancelable) e.preventDefault();
+  }, { passive: false });
   const endPointer = (e) => { pointers.delete(e.pointerId); if (pointers.size < 2) pinchD = 0; };
   canvas.addEventListener('pointercancel', endPointer);
   canvas.addEventListener('pointerup', (e) => {
     if (guided.active) return;
     endPointer(e);
+    lastFreePointer = { x: e.clientX, y: e.clientY };
     if (!down) return;
     const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
     const quick = performance.now() - down.t < 600;
@@ -1332,6 +1375,9 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
       clockT.start();
       setMode('follow');
       fp.blend = 1;
+      camera.fov = fpFov(); // never start with the overview camera's telephoto lens
+      camera.near = 0.065;
+      camera.updateProjectionMatrix();
       frame();
     },
     // Always first person: opening a section turns your head toward it instead of moving the camera.
@@ -1345,14 +1391,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
       selected = rootsByKind[kind]?.[index] || interactive.find((o) => o.userData.hit.kind === kind) || null;
       if (selected && kind !== 'talk') lookToward(selected.getWorldPosition(new THREE.Vector3()));
     },
-    look(dx, dy) {
-      if (mode !== 'follow' || talking || guided.active) return;
-      lookGoal = null;
-      const factor = 0.00185 * lookSensitivity;
-      cam.yaw -= THREE.MathUtils.clamp(dx, -120, 120) * factor;
-      cam.pitch = THREE.MathUtils.clamp(cam.pitch - THREE.MathUtils.clamp(dy, -120, 120) *
-        factor * (invertLookY ? -1 : 1), -1.15, 1.05);
-    },
+    look(dx, dy) { applyMouseLook(dx, dy); },
     setLookSettings({ sensitivity, invertY } = {}) {
       if (sensitivity !== undefined && Number.isFinite(sensitivity))
         lookSensitivity = THREE.MathUtils.clamp(sensitivity, 0.35, 2.5);
