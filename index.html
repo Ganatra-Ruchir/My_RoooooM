@@ -37,6 +37,16 @@
   </div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <div class="crosshair" aria-hidden="true"></div>
+  <!-- Always-first-person game HUD. Rendered over the full-bleed 3D canvas. -->
+  <aside class="world-hud" id="worldHud" aria-label="Exploration status">
+    <div class="world-hud__heading">
+      <span class="world-hud__signal"></span>
+      <span>RUCHIR'S ROOM <small>· FIRST PERSON</small></span>
+    </div>
+    <canvas id="roomMiniMap" width="184" height="184" aria-label="Map showing your position and nearby characters"></canvas>
+    <div class="world-hud__objective"><b>EXPLORE</b><span>Meet the people. Discover the work.</span></div>
+  </aside>
+  <div class="npc-caption" id="npcSubtitle" role="status" aria-live="polite" hidden></div>
   <button class="prompt" id="prompt" type="button" hidden><kbd>E</kbd><span id="promptText"></span></button>
 
   <!-- touch controls -->
