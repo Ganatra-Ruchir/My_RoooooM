@@ -849,7 +849,11 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
     cam.yaw += shortestAngle(cam.yaw, wantYaw) * Math.min(1, dt * (reducedMotion ? 7 : 3.2));
     cam.pitch += (wantPitch - cam.pitch) * Math.min(1, dt * (reducedMotion ? 7 : 3.2));
     // Dev leads between attractions, then turns to face the visitor while narrating.
-    npcSystem.setTourGuide(1, stop.guide[0], stop.guide[1]);
+    if (stop.id === 'ready' && guided.elapsed < stop.seconds * 0.52) {
+      npcSystem.setTourGuide(1, 3.92, 1.65); // guide around the beanbag and helmet
+    } else {
+      npcSystem.setTourGuide(1, stop.guide[0], stop.guide[1]);
+    }
   }
 
   const fp = { blend: 1, fromPos: new THREE.Vector3(), fromQuat: new THREE.Quaternion(), fromFov: 26, bob: 0 };
