@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "format": "vrm0",
+  "bytes": 21144736,
+  "sha256": "820d2ce6882f97eb422d4af68b3e9e34b83f21d8734ab84d0eab75c427c86a03",
+  "parts": [
+    {
+      "path": "meera.part00",
+      "bytes": 2359296
+    },
+    {
+      "path": "meera.part01",
+      "bytes": 2359296
+    },
+    {
+      "path": "meera.part02",
+      "bytes": 2359296
+    },
+    {
+      "path": "meera.part03",
+      "bytes": 2359296
+    },
+    {
+      "path": "meera.part04",
+      "bytes": 2359296
+    },
+    {
+      "path": "meera.part05",
+      "bytes": 2359296
+    },
+    {
+      "path": "meera.part06",
+      "bytes": 2359296
+    },
+    {
+      "path": "meera.part07",
+      "bytes": 2359296
+    },
+    {
+      "path": "meera.part08",
+      "bytes": 2270368
+    }
+  ]
+}
