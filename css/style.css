@@ -751,3 +751,179 @@ body.tour-active .npc-caption {
 @media (prefers-reduced-motion: reduce) {
   .guided-tour-progress span { transition: none; }
 }
+
+
+/* CINEMATIC ROOM — image-faithful host portrait, grounded material palette,
+   immersive letterboxed tour, unobtrusive film subtitles, mouse-first gameplay */
+:root {
+  --cinema-ink: #12191e;
+  --cinema-slate: #222b33;
+  --cinema-lime: #d4dfc7;
+  --cinema-line: rgba(230,239,240,.15);
+}
+body { overscroll-behavior: none; }
+#stage { background: #151a1e; }
+#room { touch-action: none; }
+body[data-view="follow"] #room { cursor: crosshair; }
+body.locked #room { cursor: none !important; }
+body.tour-active #room { cursor: default !important; }
+body.tour-active .topbar,
+body.tour-active .dock,
+body.tour-active .world-hud,
+body.tour-active .help-btn,
+body.tour-active .crosshair { opacity: 0 !important; visibility: hidden; pointer-events: none; }
+body.tour-active #stage::before {
+  content: ""; display: block; position: absolute; top: 0; left: 0; right: 0;
+  height: clamp(10px, 2.3vw, 40px); background: #070b0e;
+  z-index: 8; pointer-events: none;
+}
+body.tour-active::after {
+  content: ""; position: fixed; left: 0; right: 0; bottom: 0;
+  height: clamp(12px, 2.3vw, 40px); background: #070b0e;
+  z-index: 38; pointer-events: none;
+}
+.guided-tour-panel {
+  z-index: 43;
+  top: clamp(50px, 7vh, 110px);
+  right: clamp(16px, 3vw, 62px); left: auto;
+  width: min(365px, 32vw); min-width: 290px;
+  padding: 12px 14px 14px;
+  border: 1px solid rgba(225,238,232,.16);
+  border-radius: 15px;
+  color: #ecf0ec;
+  background: linear-gradient(160deg, rgba(15,22,28,.91), rgba(23,31,38,.82));
+  box-shadow: 0 26px 72px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.06);
+  -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+}
+.guide-cinematic-image {
+  position: relative; width: 100%; aspect-ratio: 16 / 9;
+  overflow: hidden; border-radius: 10px; margin: 0 0 13px;
+  background: #596575; border: 1px solid rgba(255,255,255,.13);
+}
+.guide-cinematic-image img {
+  display: block; width: 100%; height: 100%; object-fit: contain;
+  object-position: center center; /* NEVER deform/crop the user's face or body */
+}
+.guide-cinematic-image::after {
+  content: ""; position: absolute; inset: 46% 0 0; pointer-events: none;
+  background: linear-gradient(transparent, rgba(9,16,21,.68));
+}
+.guide-image-label {
+  position: absolute; z-index: 1; left: 11px; bottom: 10px;
+  font: 700 10px/1 var(--font-ui); letter-spacing: .19em;
+  color: #f5f7ef; text-shadow: 0 1px 4px rgba(0,0,0,.7);
+}
+.guide-image-label i { color: #d0e7bf; font-style: normal; }
+.guided-tour-head { color: #c6d5d2; }
+.guided-tour-head strong { font-size: 10px; letter-spacing: .12em; }
+.guided-tour-dot { background: #b8d6bd; box-shadow: 0 0 12px rgba(184,214,189,.8); }
+.guided-tour-count { color: #b3bfbe; font-variant-numeric: tabular-nums; }
+.guided-tour-category {
+  display: block; margin-top: 13px; color: #b5c8b3; font: 700 9px/1.1 var(--font-ui);
+  letter-spacing: .19em;
+}
+.guided-tour-panel p {
+  margin: 6px 0 11px; font: 500 clamp(18px, 1.5vw, 24px)/1.14 var(--font-display);
+  letter-spacing: -.025em; color: #f4f4f0;
+}
+.guided-tour-tags {
+  display: flex; flex-wrap: wrap; gap: 6px; min-height: 0;
+  margin: 0 0 12px;
+}
+.guided-tour-tags span {
+  display: inline-block; max-width: 100%; padding: 5px 8px;
+  color: #d5e3d7; font: 500 10px/1.3 var(--font-ui);
+  border-radius: 5px; border: 1px solid rgba(209,226,210,.17);
+  background: rgba(206,225,206,.075);
+}
+.tour-focus-photo { margin: 0 0 12px; border-radius: 8px; overflow: hidden; max-height: 90px; }
+.tour-focus-photo[hidden] { display: none !important; }
+.tour-focus-photo img {
+  display: block; width: 100%; height: 90px; object-fit: contain;
+  background: rgba(17,20,23,.45); border-radius: 8px;
+}
+.guided-tour-progress { height: 3px; background: rgba(255,255,255,.12); }
+.guided-tour-progress span { background: #b3d2ad; transition: width .1s linear; }
+.guided-tour-meta > span { color: #a6b6b6; }
+.guided-tour-meta button {
+  background: rgba(162,201,180,.1); color: #e0f3e5;
+  border: 1px solid rgba(170,219,190,.32); min-width: 92px;
+  padding: 9px 12px;
+}
+.guided-tour-meta button:hover,
+.guided-tour-meta button:focus-visible { background: rgba(162,201,180,.22); outline-color: #a7c9a3; }
+body.tour-active .npc-caption {
+  z-index: 41; bottom: clamp(28px, 5vh, 72px);
+  max-width: min(840px, calc(100vw - 50px)); padding: 15px 22px;
+  background: linear-gradient(90deg, transparent, rgba(2,5,9,.7) 12%, rgba(2,5,9,.76) 88%, transparent);
+  border: 0; border-radius: 0; box-shadow: none; backdrop-filter: none;
+  color: #f8faf8; font: 500 clamp(15px, 1.25vw, 19px)/1.5 var(--font-ui);
+  text-shadow: 0 2px 7px rgba(0,0,0,.85); text-align: center;
+}
+.tour-finished {
+  z-index: 55; left: 50%; right: auto; bottom: max(55px, 9vh);
+  transform: translateX(-50%); width: min(600px, calc(100vw - 30px)); max-width: none;
+  padding: 20px 22px; background: rgba(12,19,24,.94);
+  border: 1px solid rgba(178,219,190,.34); box-shadow: 0 22px 80px rgba(0,0,0,.45);
+  border-radius: 17px; gap: 22px;
+}
+.tour-finished div { flex: 1; }
+.tour-finished strong { color: #e8f4e9; font-size: 13px; }
+.tour-finished span { font-size: 12px; color: #c4d0c5; }
+.tour-finished button {
+  background: #c1d8bb; color: #14201a; border-color: #a6c49e;
+  font: 700 12px var(--font-ui); border-radius: 10px; padding: 15px 17px;
+  box-shadow: 0 5px 18px rgba(121,177,126,.16);
+}
+.tour-finished button:hover { background: #d9e7d4; }
+.mouse-setting {
+  display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin-top: 13px;
+  font: 600 11px/1.5 var(--font-ui); color: #e8f2e7;
+}
+.mouse-setting input {
+  min-width: 70px; flex: 1; height: 16px; accent-color: #c5dfbd;
+  cursor: pointer; touch-action: auto;
+}
+.mouse-setting output { font-variant-numeric: tabular-nums; min-width: 38px; }
+.mouse-invert { display: flex; gap: 6px; align-items: center; font-size: 10px; color: #c7d8ce; cursor: pointer; }
+.mouse-invert input { accent-color: #abcba8; }
+.mouse-tip { font: 500 11px/1.5 var(--font-ui); color: var(--muted); margin: 14px 0 0; text-align: center; }
+body.click-to-look:not(.at-play):not(.tour-active) .crosshair {
+  filter: drop-shadow(0 0 5px #9fd9b1);
+}
+body:not(.tour-active) .world-hud {
+  background: linear-gradient(135deg, rgba(12,21,27,.8), rgba(9,16,24,.61));
+  border-color: rgba(187,213,211,.19);
+}
+@media (max-width: 920px) {
+  .guided-tour-panel { right: 12px; width: min(330px, calc(100vw - 24px)); min-width: 0; }
+  .tour-finished { flex-direction: column; align-items: stretch; gap: 14px; }
+  .tour-finished button { width: 100%; }
+}
+@media (max-width: 720px) {
+  .guided-tour-panel {
+    top: max(26px, env(safe-area-inset-top)); right: 10px; left: 10px;
+    width: auto; display: grid; grid-template-columns: minmax(0, 130px) 1fr;
+    gap: 0 12px; padding: 10px;
+  }
+  .guide-cinematic-image { grid-column: 1; grid-row: 1 / 5; aspect-ratio: 4 / 5; margin: 0; }
+  .guide-cinematic-image img { object-fit: cover; object-position: 54% center; }
+  .guide-cinematic-image::after { inset: 50% 0 0; }
+  .guide-image-label { left: 6px; bottom: 6px; font-size: 8px; letter-spacing: .06em; }
+  .guided-tour-head, .guided-tour-category, .guided-tour-panel p,
+  .guided-tour-tags { grid-column: 2; }
+  .guided-tour-head strong { font-size: 8px; }
+  .guided-tour-category { margin-top: 7px; font-size: 8px; }
+  .guided-tour-panel p { margin: 3px 0 5px; font-size: 16px; }
+  .guided-tour-tags { margin-bottom: 4px; gap: 4px; }
+  .guided-tour-tags span { padding: 4px 5px; font-size: 9px; }
+  .tour-focus-photo { display: none; }
+  .guided-tour-progress, .guided-tour-meta { grid-column: 1 / -1; }
+  .guided-tour-meta { margin-top: 6px; }
+  .guided-tour-meta button { padding: 7px 9px; }
+  body.tour-active .npc-caption { bottom: 25px; font-size: 13px; padding: 10px 12px; max-width: calc(100vw - 16px); }
+  .tour-finished { bottom: 60px; padding: 15px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .guided-tour-progress span { transition: none; }
+}
