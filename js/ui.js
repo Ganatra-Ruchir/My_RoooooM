@@ -399,6 +399,7 @@ export function createUI({ room = null }) {
     else room.setInset(drawer.getBoundingClientRect().width + 16, 'x');
   }
   function open(view, index = 0) {
+    if (room?.isTouring) return;
     const detail = DETAIL[view];
     const section = detail ? detail.section : view;
     if (!SECTIONS[section]) return;
@@ -614,15 +615,81 @@ export function createUI({ room = null }) {
   // Dialogue subtitles and a small deterministic top-down radar, both entirely local.
   const npcCaption = $('#npcSubtitle');
   let npcUntil = 0;
-  function showNpcLine(index, text) {
+  function showNpcLine(index, text, duration) {
     if (!npcCaption || !text || !room) return;
     npcCaption.textContent = text;
     npcCaption.hidden = false;
-    npcUntil = performance.now() + (text.includes('Come say hi') ? 3200 : 5600);
+    npcUntil = performance.now() + (duration || (text.includes('Come say hi') ? 3200 : 5600));
   }
   function updateNpcCaption() {
     if (npcCaption && !npcCaption.hidden && performance.now() > npcUntil) npcCaption.hidden = true;
   }
+
+  // Automatic guided introduction. It plays immediately after the room loads,
+  // without needing any input; fullscreen and spoken audio remain opt-in
+  // because browsers restrict those without a real user gesture.
+  const tourPanel = $('#guidedTour');
+  const tourFinished = $('#tourFinished');
+  const tourVoice = $('#tourVoice');
+  let voiceEnabled = false;
+  let currentNarration = '';
+  function speakGuide(text) {
+    if (!voiceEnabled || !('speechSynthesis' in window) || !('SpeechSynthesisUtterance' in window)) return;
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'en-IN'; u.rate = 1.17; u.pitch = 1; u.volume = 0.94;
+    const voices = window.speechSynthesis.getVoices();
+    u.voice = voices.find(v => v.lang.toLowerCase() === 'en-in')
+      || voices.find(v => v.lang.toLowerCase().startsWith('en')) || null;
+    try { window.speechSynthesis.speak(u); } catch { /* subtitles remain visible */ }
+  }
+  if (!('speechSynthesis' in window)) tourVoice.hidden = true;
+  tourVoice?.addEventListener('click', () => {
+    voiceEnabled = !voiceEnabled;
+    tourVoice.textContent = voiceEnabled ? 'Mute voice' : 'Enable voice';
+    tourVoice.setAttribute('aria-pressed', String(voiceEnabled));
+    if (!voiceEnabled) window.speechSynthesis?.cancel();
+    else if (currentNarration) speakGuide(currentNarration);
+  });
+  function beginGuidedTour() {
+    play.hidden = true;
+    playing = false;
+    body.classList.remove('at-play');
+    body.classList.add('tour-active');
+    tourFinished.hidden = true;
+    tourPanel.hidden = false;
+    $('#tourBar').style.width = '0%';
+    $('#tourProgress').setAttribute('aria-valuenow', '0');
+  }
+  function showTourStep(step) {
+    if (!step || !tourPanel) return;
+    const count = (String(step.index + 1)).padStart(2, '0');
+    $('#tourCount').textContent = count + ' / ' + step.total;
+    $('#tourStopTitle').textContent = step.title;
+    currentNarration = step.text;
+    showNpcLine(1, 'Dev · Room Guide: ' + step.text, (step.seconds + 0.2) * 1000);
+    speakGuide(step.text);
+  }
+  function updateTourProgress() {
+    if (!room?.isTouring || !tourPanel || tourPanel.hidden) return;
+    const percentage = Math.round(room.tourProgress * 100);
+    $('#tourBar').style.width = percentage + '%';
+    $('#tourProgress').setAttribute('aria-valuenow', String(percentage));
+  }
+  function completeGuidedTour() {
+    body.classList.remove('tour-active');
+    tourPanel.hidden = true;
+    tourFinished.hidden = false;
+    playing = true; // keyboard movement is already unlocked; click canvas to lock look
+    setTimeout(() => { if (!tourFinished.hidden) tourFinished.classList.add('soften'); }, 5500);
+    if (voiceEnabled) window.speechSynthesis?.cancel();
+    showNpcLine(1, 'Dev · Tour complete. You can explore freely now!', 7000);
+  }
+  $('#tourExploreBtn')?.addEventListener('click', () => {
+    tourFinished.hidden = true;
+    startPlaying(); // real click: the browser can enter fullscreen and request pointer lock
+  });
+
   const minimap = $('#roomMiniMap');
   const mapCtx = minimap?.getContext('2d');
   let lastMap = -1000;
@@ -751,7 +818,7 @@ export function createUI({ room = null }) {
   const popState = { pets: store.get('catPets', 0), playing: false, duck: 0, growth: 1 };
   function renderPop() { if (popKind) popBody.innerHTML = POP[popKind](popState); }
   function showPop(kind) {
-    if (!room) return;
+    if (!room || room.isTouring) return;
     if (drawer.classList.contains('open')) close();
     if (popKind && popKind !== kind) hidePop();
     popKind = kind;
@@ -820,6 +887,7 @@ export function createUI({ room = null }) {
 
   // Called when something in the 3D room is clicked.
   function handleSelect(kind, index) {
+    if (room?.isTouring) return;
     if (kind === 'npc') {
       const response = room?.act('npc', index);
       if (response) showNpcLine(index, response.name + ' · ' + response.role + ': ' + response.text);
@@ -849,10 +917,11 @@ export function createUI({ room = null }) {
     open, close, setNight, toggleList, setWriting, handleSelect, hidePop,
     toggleMap, toggleFullscreen, toggleHelp, hideHelpSoon, setPrompt, onMode,
     showStart: () => showPlay('start'),
+    beginGuidedTour, showTourStep, completeGuidedTour,
     showNpcLine,
     get playing() { return playing && play.hidden; },
-    blocksGameKeys: () => drawer.classList.contains('open') || !list.hidden || chat.isOpen || !play.hidden,
-    updateMarkers() { updateMarkers(); updatePop(); updatePrompt(); updateNpcCaption(); updateMiniMap(); },
+    blocksGameKeys: () => !!room?.isTouring || drawer.classList.contains('open') || !list.hidden || chat.isOpen || !play.hidden,
+    updateMarkers() { updateMarkers(); updatePop(); updatePrompt(); updateNpcCaption(); updateMiniMap(); updateTourProgress(); },
     onHover: showTooltip,
     get isNight() { return night; },
   };
