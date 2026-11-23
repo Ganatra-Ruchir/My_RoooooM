@@ -6,7 +6,42 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-const VRM_PATH = 'assets/characters/meera.vrm';
+
+const PARTS = Array.from({ length: 9 }, (_, i) =>
+  `assets/characters/meera.part${String(i).padStart(2, '0')}`);
+const ORIGINAL_BYTES = 21144736;
+const ORIGINAL_SHA256 = '820d2ce6882f97eb422d4af68b3e9e34b83f21d8734ab84d0eab75c427c86a03';
+
+// The uploaded original cannot be passed as one GitHub binary blob through the
+// connector. Nine immutable raw chunks are concatenated in exact byte order.
+// Hash verification prevents accidental or partial assets from reaching the
+// loader, and the image/VRM metadata remains unmodified.
+async function originalVRMBlobURL(onProgress) {
+  let received = 0;
+  const chunks = await Promise.all(PARTS.map(async path => {
+    const response = await fetch(path, { cache: 'force-cache' });
+    if (!response.ok) throw new Error('Missing Meera VRM part ' + path + ': HTTP ' + response.status);
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    received += bytes.byteLength;
+    onProgress?.(Math.min(0.85, received / ORIGINAL_BYTES * 0.85));
+    return bytes;
+  }));
+  if (received !== ORIGINAL_BYTES) throw new Error(
+    'Meera VRM transfer incomplete: received ' + received + ' of ' + ORIGINAL_BYTES + ' bytes');
+  const binary = new Uint8Array(ORIGINAL_BYTES);
+  let offset = 0;
+  for (const bytes of chunks) { binary.set(bytes, offset); offset += bytes.byteLength; }
+  const view = new DataView(binary.buffer);
+  if (view.getUint32(0, true) !== 0x46546C67 || view.getUint32(8, true) !== ORIGINAL_BYTES)
+    throw new Error('Meera transfer did not reconstruct a valid GLB/VRM header');
+  if (globalThis.crypto?.subtle) {
+    const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', binary));
+    const hex = Array.from(digest, x => x.toString(16).padStart(2, '0')).join('');
+    if (hex !== ORIGINAL_SHA256) throw new Error('Meera original file integrity check failed');
+  }
+  onProgress?.(0.9);
+  return URL.createObjectURL(new Blob([binary], { type: 'model/gltf-binary' }));
+}
 const clamp = THREE.MathUtils.clamp;
 const BODY_PARTS = [
   'hips','spine','chest','upperChest','neck','head',
@@ -26,11 +61,14 @@ export async function loadMeeraVRM({ x, z, scale = 1.52, onProgress } = {}) {
   const loader = new GLTFLoader();
   loader.register(parser => new VRMLoaderPlugin(parser));
   loader.crossOrigin = 'anonymous';
-  const gltf = await new Promise((resolve, reject) => {
-    loader.load(VRM_PATH, resolve, evt => {
-      if (evt.total && onProgress) onProgress(evt.loaded / evt.total);
-    }, reject);
-  });
+  const assetURL = await originalVRMBlobURL(onProgress);
+  let gltf;
+  try {
+    gltf = await loader.loadAsync(assetURL);
+    onProgress?.(1);
+  } finally {
+    URL.revokeObjectURL(assetURL);
+  }
   const vrm = gltf.userData.vrm;
   if (!vrm || !vrm.humanoid) throw new Error('Meera file has no compatible VRM humanoid');
   // VRM0 and VRM1 use different forward axes. This is the documented helper
@@ -42,7 +80,7 @@ export async function loadMeeraVRM({ x, z, scale = 1.52, onProgress } = {}) {
     if (!o.isMesh) return;
     o.frustumCulled = false; // skirts, hair and dynamic body need stable bounds
     o.castShadow = true; o.receiveShadow = true;
-    o.raycast = () => {}; // walk-up interactions use NPC target, not GLB triangle rays
+    // Keep original mesh raycasting so direct interaction still works.
   });
   const root = new THREE.Group();
   root.name = 'meera-vrm-guide';
@@ -62,7 +100,7 @@ export async function loadMeeraVRM({ x, z, scale = 1.52, onProgress } = {}) {
   const expressions = vrm.expressionManager;
   const keys = new Set(expressions?.expressions?.map(x => x.expressionName) || []);
   const voiceKeys = ['aa','ih','ou','ee','oh']; // VRM0 A/I/U/E/O -> normalized VRM names
-  let seed=241, nextBlink=2.9, state='Idle', breath=0;
+  let nextBlink=2.9, blinkUntil=0, state='Idle', breath=0;
   let gesture=0, talkPulse=0;
   let lastNow=0, lastPlayer=null;
   function setExpr(name, value) {
@@ -107,8 +145,10 @@ export async function loadMeeraVRM({ x, z, scale = 1.52, onProgress } = {}) {
       bend('chest', X_AXIS, relax);
       bend('spine', Z_AXIS, Math.sin(now*1.12)*0.013);
       if(greeting){
-        bend('rightUpperArm', Z_AXIS, -0.94);
-        bend('rightUpperArm', X_AXIS, -0.35);
+        const arm = bones.get('rightUpperArm');
+        if(arm) arm.node.quaternion.copy(arm.rest)
+          .multiply(new THREE.Quaternion().setFromAxisAngle(Z_AXIS, -0.94))
+          .multiply(new THREE.Quaternion().setFromAxisAngle(X_AXIS, -0.35));
         bend('rightLowerArm', Z_AXIS, -0.32 - 0.12*Math.sin(now*7));
       } else if(speaking){
         bend('rightUpperArm', Z_AXIS, -0.26 - 0.12*Math.sin(now*2.7));
@@ -119,20 +159,26 @@ export async function loadMeeraVRM({ x, z, scale = 1.52, onProgress } = {}) {
       // Subtle head attention relative to NPC root. Avoid twists beyond VRM neck limits.
       let gaze=0;
       if(playerTarget && !locomotion) {
-        const dx=playerTarget.x-root.parent?.position.x, dz=playerTarget.z-root.parent?.position.z;
+        const origin = root.getWorldPosition(new THREE.Vector3());
+        const dx = playerTarget.x - origin.x, dz = playerTarget.z - origin.z;
         if(Number.isFinite(dx) && Number.isFinite(dz)){
-          const wanted=Math.atan2(dx,dz)-(root.parent?.rotation.y||0);
-          gaze=clamp(Math.atan2(Math.sin(wanted),Math.cos(wanted)),-0.18,0.18);
+          const worldYaw = root.getWorldQuaternion(new THREE.Quaternion());
+          const forward = new THREE.Vector3(0,0,1).applyQuaternion(worldYaw);
+          const current = Math.atan2(forward.x, forward.z);
+          const wanted = Math.atan2(dx, dz) - current;
+          gaze = clamp(Math.atan2(Math.sin(wanted),Math.cos(wanted)), -0.18, 0.18);
         }
       }
       bend('head',Y_AXIS,gaze + Math.sin(now*0.59)*0.027);
       bend('head',X_AXIS,0.027 + Math.sin(now*1.6)*0.012);
 
       // The VRM0 source embeds Blink and A/I/U/E/O blendshape groups.
-      if(now>=nextBlink) nextBlink=now+2.4+((now*7.7)%2);
-      const timeToBlink=nextBlink-now;
-      const blink = timeToBlink > 0 && timeToBlink < 0.14
-        ? Math.sin((0.14-timeToBlink)/0.14*Math.PI)*0.95 : 0;
+      if(now >= nextBlink) {
+        blinkUntil = now + 0.16;
+        nextBlink = now + 2.6 + ((now * 7.7) % 1.9);
+      }
+      const blink = now < blinkUntil
+        ? Math.sin((blinkUntil - now) / 0.16 * Math.PI) * 0.95 : 0;
       setExpr('blink',blink);
       talkPulse += dt*9.6;
       const mouth = speaking ? 0.13 + 0.36*Math.pow(Math.max(0,Math.sin(talkPulse)),1.5) : 0;
