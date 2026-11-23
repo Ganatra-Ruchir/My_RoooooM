@@ -7,6 +7,12 @@ import * as TX from './textures.js';
 import { createAvatar } from './avatar.js';
 import { buildExtras } from './extras.js';
 import { createVisitor, collide, addObstacle } from './player.js';
+import { createNPCSystem } from './npc.js';
+import { createFirstPersonArms } from './first-person.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
 const AVATAR_POS = new THREE.Vector3(-0.8, 0, -2.75);
 const STANDEE_POS = new THREE.Vector3(-3.15, 0, -2.5);
@@ -16,7 +22,9 @@ const GROUND_DAY = new THREE.Color(0xe6d5bf), GROUND_NIGHT = new THREE.Color(0x2
 export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) {
   // ---------- Renderer / scene ----------
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  const lowPower = matchMedia('(pointer: coarse)').matches || (navigator.deviceMemory && navigator.deviceMemory < 4);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, lowPower ? 1.25 : 1.8));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -25,6 +33,16 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 200);
+  // Restrained bloom lifts neon, watch highlights and warm practical lights.
+  // Skip post FX on touch / low-memory devices to protect frame rate.
+  const cinematic = !lowPower && !reducedMotion;
+  const composer = cinematic ? new EffectComposer(renderer) : null;
+  if (composer) {
+    composer.addPass(new RenderPass(scene, camera));
+    const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.24, 0.38, 0.96);
+    composer.addPass(bloom);
+    composer.addPass(new OutputPass());
+  }
   const controls = new OrbitControls(camera, canvas);
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
@@ -510,6 +528,12 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
   visitor.root.rotation.y = -Math.PI / 2;
   scene.add(visitor.root);
   const player = { pos: visitor.root.position, yaw: -Math.PI / 2, vel: new THREE.Vector3(), target: null, stuck: 0, speed: 0 };
+  const firstPersonArms = createFirstPersonArms();
+  scene.add(firstPersonArms.root);
+  const npcSystem = createNPCSystem({
+    scene, reducedMotion,
+    onGreet: (index, line) => hooks.onNpcGreet?.(index, line),
+  });
   const walkRing = mesh(new THREE.RingGeometry(0.16, 0.26, 32), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false }), 0, 0.03, 0, scene, { cast: false, receive: false });
   walkRing.rotation.x = -Math.PI / 2;
   walkRing.raycast = () => {};
@@ -582,7 +606,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
   sun.position.set(7, 13, 9);
   sun.target.position.set(0, 0, -1);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.mapSize.set(lowPower ? 1024 : 2048, lowPower ? 1024 : 2048);
   Object.assign(sun.shadow.camera, { left: -9, right: 9, top: 9, bottom: -9, near: 1, far: 40 });
   sun.shadow.bias = -0.0005;
   sun.shadow.normalBias = 0.03;
@@ -590,6 +614,23 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
   const fill = new THREE.DirectionalLight(0xffe2c4, 0.5);
   fill.position.set(-2, 6, 10);
   scene.add(fill);
+
+  const cornerBounce = new THREE.PointLight(0xf9bd87, 0.6, 9, 2);
+  cornerBounce.position.set(3.85, 3.35, 2.9); scene.add(cornerBounce);
+  // Sparse airborne dust catches warm light without expensive volumetrics.
+  const dustPositions = new Float32Array(90 * 3);
+  for (let i = 0; i < 90; i++) {
+    dustPositions[3 * i] = Math.sin(i * 13.91) * 4.15;
+    dustPositions[3 * i + 1] = 1.1 + (Math.sin(i * 8.43) * 0.5 + 0.5) * 3.7;
+    dustPositions[3 * i + 2] = Math.cos(i * 16.73) * 4.12;
+  }
+  const dustGeo = new THREE.BufferGeometry();
+  dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPositions, 3));
+  const dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({
+    color: 0xffd6a8, size: 0.035, transparent: true, opacity: 0.16,
+    depthWrite: false, map: TX.softDotTexture(), sizeAttenuation: true,
+  }));
+  dust.raycast = () => {}; scene.add(dust);
 
   const DAY = { hemi: 1.5, hemiSky: new THREE.Color(0xfff3e0), hemiGround: new THREE.Color(0x6b5242), sun: 2.6, sunCol: new THREE.Color(0xfff0d8), fill: 0.5, lamp: 1.2, neon: 0.6, screen: 0.4, bulb: 0.4, gallery: 0, exposure: 1.05, pic: 1 };
   const NIGHT = { hemi: 0.45, hemiSky: new THREE.Color(0x6a74b8), hemiGround: new THREE.Color(0x2a2030), sun: 0.55, sunCol: new THREE.Color(0x9fb4ff), fill: 0.12, lamp: 9, neon: 4, screen: 2.2, bulb: 3, gallery: 2.5, exposure: 1.1, pic: 0.92 };
@@ -602,6 +643,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
     sun.intensity = L(DAY.sun, NIGHT.sun);
     sun.color.copy(DAY.sunCol).lerp(NIGHT.sunCol, n);
     fill.intensity = L(DAY.fill, NIGHT.fill);
+    cornerBounce.intensity = L(0.45, 1.7);
     lampLight.intensity = L(DAY.lamp, NIGHT.lamp) * lampAmt;
     neonLight.intensity = L(DAY.neon, NIGHT.neon);
     neonMat.opacity = L(0.75, 1);
@@ -773,6 +815,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
     const r = canvas.parentElement.getBoundingClientRect();
     W = Math.max(1, r.width); H = Math.max(1, r.height);
     renderer.setSize(W, H, false);
+    if (composer) composer.setSize(W, H);
     camera.aspect = W / H;
     camera.fov = mode === 'follow' ? fpFov() : viewFov();
     camera.updateProjectionMatrix();
@@ -909,6 +952,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
   // ---------- "Press E" prompts when you walk up to things ----------
   const v3 = (x, y, z) => (o) => o.set(x, y, z);
   const TARGETS = [
+    ...npcSystem.targets,
     { kind: 'talk', index: 0, label: 'Talk to Ruchir', r: 2.7, prio: 2.0, fw: 0.2, y: 3.7, pos: (o) => o.copy(ruchir.pos) },
     ...data.certificates.slice(0, 5).map((c, col) => ({ kind: 'cert', index: col, label: 'View certificate · ' + c.short, r: 1.35, y: 3.7, pos: v3(-4.35, 0, 3.4 - col * 1.7) })),
     { kind: 'projects', index: 0, label: 'Browse the project shelf', r: 1.7, y: 4.7, pos: v3(3.0, 0, -3.85) },
@@ -1012,6 +1056,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
     const t = (simT += dt);
 
     updatePlayer(t, dt);
+    npcSystem.update(t, dt, player.pos, player.speed);
     if (mode === 'follow') updateFirstPerson(dt);
     else if (tween) {
       const k = ease(Math.min(1, (performance.now() - tween.start) / 1000 / tween.dur));
@@ -1075,11 +1120,18 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
       sp.scale.setScalar(0.08 + k * 0.16);
     });
     extras.update(t, dt, { camera });
+    firstPersonArms.root.visible = mode === 'follow';
+    if (firstPersonArms.root.visible) {
+      firstPersonArms.root.position.copy(camera.position);
+      firstPersonArms.root.quaternion.copy(camera.quaternion);
+      firstPersonArms.update(t, dt, player.speed, talking, reducedMotion);
+    }
+    dust.rotation.y = Math.sin(t * 0.07) * 0.008;
     updateFloaters(dt);
     updateWriting(t, dt);
     updateClock();
     if (!draw) return;
-    renderer.render(scene, camera);
+    if (composer) composer.render(); else renderer.render(scene, camera);
     hooks.onFrame?.();
   }
 
@@ -1135,7 +1187,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
     promptAnchor() { if (!prompt) return null; prompt.pos(pv); return pv.clone().setY(prompt.kind === 'cat' ? 1.4 : prompt.y); },
     setTalking(on) { talking = on; if (on) player.target = null; },
     lockMovement(on) { movementLocked = on; },
-    toggleMap() { homeMode = mode === 'map' ? 'follow' : 'map'; goHome(); return mode; },
+    toggleMap() { if (mode !== 'follow') setMode('follow'); return 'follow'; },
     get mode() { return mode; },
     get playerPos() { return player.pos.clone(); },
     // dev helper: fast-forward the room (used with ?debug when the tab is throttled)
@@ -1148,6 +1200,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
     setInset(px, axis = 'x') { inset.tx = axis === 'x' ? px / 2 : 0; inset.ty = axis === 'y' ? px / 2 : 0; },
     // playful extras
     act(kind, action) {
+      if (kind === 'npc') return npcSystem.interact(Number(action), simT);
       if (kind === 'lamp') { lampOn = lampOn ? 0 : 1; return !!lampOn; }
       return extras.act(kind, action);
     },
@@ -1157,6 +1210,8 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
       return extras.anchorOf(kind);
     },
     get plantGrowth() { return extras.plantGrowth; },
+    npcAnchor(index) { return npcSystem.anchors()[index] || null; },
+    npcState(index) { return npcSystem.getState(index); },
     // turn to look at one of the extras (used by "Show" in the secrets list)
     focusOn(kind) {
       const a = this.anchorOf(kind);
