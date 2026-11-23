@@ -10,6 +10,7 @@ import { createVisitor, collide, addObstacle } from './player.js';
 import { createNPCSystem } from './npc.js';
 import { createFirstPersonArms } from './first-person.js';
 import { createRealCharacters } from './real-characters.js';
+import { guidedTourPlan } from './guided-tour.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
@@ -782,6 +783,75 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
   let talking = false, movementLocked = false;
   const EYE = 2.75;
   const cam = { yaw: 0.93, pitch: -0.06 };
+
+  // Auto-play guided first-person tour. Tour updates the visitor's position,
+  // orientation and guide NPC; no orbit or third-person camera is used.
+  const tourPlan = guidedTourPlan(data);
+  const tourLength = tourPlan.reduce((total, stop) => total + stop.seconds, 0);
+  const guided = {
+    active: false, finished: false, index: 0, elapsed: 0, total: 0,
+    from: new THREE.Vector2(SPAWN.x, SPAWN.z), last: new THREE.Vector2(SPAWN.x, SPAWN.z),
+  };
+  function announceTourStop(index) {
+    const item = tourPlan[index];
+    if (!item) return;
+    hooks.onTourStep?.({ index, total: tourPlan.length, title: item.title, text: item.say, id: item.id });
+  }
+  function beginGuidedTour() {
+    if (guided.active || guided.finished || !tourPlan.length) return false;
+    if (mode !== 'follow') setMode('follow');
+    guided.active = true;
+    guided.index = 0; guided.elapsed = 0; guided.total = 0;
+    guided.from.set(player.pos.x, player.pos.z);
+    guided.last.copy(guided.from);
+    player.target = null; player.vel.set(0, 0, 0); player.speed = 0;
+    movementLocked = true; talking = false; lookGoal = null;
+    const start = tourPlan[0];
+    npcSystem.setTourGuide(1, start.guide[0], start.guide[1], true);
+    announceTourStop(0);
+    return true;
+  }
+  function finishGuidedTour() {
+    guided.active = false;
+    guided.finished = true;
+    movementLocked = false;
+    player.target = null; player.vel.set(0, 0, 0);
+    npcSystem.releaseTourGuide(1);
+    hooks.onTourFinished?.();
+  }
+  const shortestAngle = (a, b) => Math.atan2(Math.sin(b - a), Math.cos(b - a));
+  function updateGuidedTour(dt) {
+    if (!guided.active) return;
+    guided.total += dt;
+    guided.elapsed += dt;
+    let stop = tourPlan[guided.index];
+    // Progress through authored stops even when a background tab has been throttled.
+    if (guided.elapsed >= stop.seconds) {
+      guided.elapsed -= stop.seconds;
+      guided.index += 1;
+      if (guided.index >= tourPlan.length) { finishGuidedTour(); return; }
+      stop = tourPlan[guided.index];
+      guided.from.set(player.pos.x, player.pos.z);
+      announceTourStop(guided.index);
+    }
+    // Camera travels as the visitor's own eyes at a steady standing eye height.
+    // Hold on each featured object long enough to read the on-screen explanation.
+    const travelTime = Math.max(0.6, stop.seconds * 0.72);
+    const k = ease(Math.min(1, guided.elapsed / travelTime));
+    player.pos.x = THREE.MathUtils.lerp(guided.from.x, stop.pos[0], k);
+    player.pos.z = THREE.MathUtils.lerp(guided.from.y, stop.pos[1], k);
+    collide(player.pos);
+    player.speed = Math.min(2.6, guided.last.distanceTo(new THREE.Vector2(player.pos.x, player.pos.z)) / Math.max(dt, 0.001));
+    guided.last.set(player.pos.x, player.pos.z);
+    const dx = stop.look[0] - player.pos.x, dz = stop.look[2] - player.pos.z;
+    const wantYaw = Math.atan2(-dx, -dz);
+    const wantPitch = THREE.MathUtils.clamp(Math.atan2(stop.look[1] - EYE, Math.hypot(dx, dz)), -0.85, 0.9);
+    cam.yaw += shortestAngle(cam.yaw, wantYaw) * Math.min(1, dt * (reducedMotion ? 7 : 3.2));
+    cam.pitch += (wantPitch - cam.pitch) * Math.min(1, dt * (reducedMotion ? 7 : 3.2));
+    // Dev leads between attractions, then turns to face the visitor while narrating.
+    npcSystem.setTourGuide(1, stop.guide[0], stop.guide[1]);
+  }
+
   const fp = { blend: 1, fromPos: new THREE.Vector3(), fromQuat: new THREE.Quaternion(), fromFov: 26, bob: 0 };
   const fpQuat = new THREE.Quaternion(), fpEuler = new THREE.Euler(0, 0, 0, 'YXZ'), fpPos = new THREE.Vector3(), headTmp = new THREE.Vector3();
   function setMode(m) {
@@ -894,11 +964,13 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
   let down = null, pinchD = 0;
   const pointers = new Map();
   canvas.addEventListener('pointerdown', (e) => {
+    if (guided.active) return;
     down = { x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, t: performance.now() };
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     pinchD = 0;
   });
   canvas.addEventListener('pointermove', (e) => {
+    if (guided.active) return;
     if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (document.pointerLockElement === canvas) return; // mouse look is handled by look()
     if (mode === 'follow' && down && (e.buttons || e.pointerType !== 'mouse') && pointers.size === 1 && !talking) {
@@ -918,6 +990,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
   const endPointer = (e) => { pointers.delete(e.pointerId); if (pointers.size < 2) pinchD = 0; };
   canvas.addEventListener('pointercancel', endPointer);
   canvas.addEventListener('pointerup', (e) => {
+    if (guided.active) return;
     endPointer(e);
     if (!down) return;
     const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
@@ -1098,6 +1171,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
     const t = (simT += dt);
 
     updatePlayer(t, dt);
+    updateGuidedTour(dt);
     npcSystem.update(t, dt, player.pos, player.speed);
     if (mode === 'follow') updateFirstPerson(dt);
     else if (tween) {
@@ -1211,22 +1285,30 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
     },
     // Always first person: opening a section turns your head toward it instead of moving the camera.
     focus(name) {
-      if (name === 'overview') return;
+      if (guided.active || name === 'overview') return;
       const v = VIEWS[name];
       if (v) lookToward(new THREE.Vector3(...v.target));
     },
     select(kind, index = 0) {
+      if (guided.active) return;
       selected = rootsByKind[kind]?.[index] || interactive.find((o) => o.userData.hit.kind === kind) || null;
       if (selected && kind !== 'talk') lookToward(selected.getWorldPosition(new THREE.Vector3()));
     },
     look(dx, dy) {
-      if (mode !== 'follow' || talking) return;
+      if (mode !== 'follow' || talking || guided.active) return;
       lookGoal = null;
       cam.yaw -= dx * 0.0022;
       cam.pitch = THREE.MathUtils.clamp(cam.pitch - dy * 0.0022, -1.15, 1.05);
     },
     // game controls
-    setInput(v) { Object.assign(input, v); },
+    startGuidedTour: beginGuidedTour,
+    get isTouring() { return guided.active; },
+    get tourFinished() { return guided.finished; },
+    get tourProgress() { return guided.active ? Math.min(1, guided.total / tourLength) : Number(guided.finished); },
+    setInput(v) {
+      if (guided.active) { Object.assign(input, { x: 0, y: 0, turn: 0, run: false }); return; }
+      Object.assign(input, v);
+    },
     interact() {
       if (!prompt || !canWalk()) return false;
       hooks.onSelect?.(prompt.kind, prompt.index);
