@@ -47,6 +47,31 @@
     <div class="world-hud__objective"><b>EXPLORE</b><span>Meet the people. Discover the work.</span></div>
   </aside>
   <div class="npc-caption" id="npcSubtitle" role="status" aria-live="polite" hidden></div>
+
+  <!-- Automatic first-person guided tour: visual captions are always available.
+       Browser policy requires a user click before voice audio/fullscreen can start. -->
+  <section class="guided-tour-panel" id="guidedTour" aria-label="Dev's guided room tour" hidden>
+    <div class="guided-tour-head">
+      <span class="guided-tour-dot" aria-hidden="true"></span>
+      <strong>DEV · YOUR ROOM GUIDE</strong>
+      <span class="guided-tour-count" id="tourCount">01 / 11</span>
+    </div>
+    <p id="tourStopTitle">Welcome to Ruchir's room</p>
+    <div class="guided-tour-progress" role="progressbar" aria-label="Guided tour progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="tourProgress">
+      <span id="tourBar"></span>
+    </div>
+    <div class="guided-tour-meta">
+      <span id="tourControlsLocked">Tour in progress · movement locked</span>
+      <button type="button" id="tourVoice" aria-label="Enable spoken tour narration">Enable voice</button>
+    </div>
+  </section>
+  <section class="tour-finished" id="tourFinished" aria-label="Free exploration unlocked" hidden>
+    <div>
+      <strong>YOUR TURN. EXPLORE FREELY.</strong>
+      <span>WASD move · Drag to look · E interact</span>
+    </div>
+    <button type="button" id="tourExploreBtn">Enter fullscreen</button>
+  </section>
   <button class="prompt" id="prompt" type="button" hidden><kbd>E</kbd><span id="promptText"></span></button>
 
   <!-- touch controls -->
