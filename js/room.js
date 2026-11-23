@@ -14,6 +14,7 @@ import { guidedTourPlan } from './guided-tour.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
 const AVATAR_POS = new THREE.Vector3(-0.8, 0, -2.75);
@@ -26,10 +27,10 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance' });
   const lowPower = matchMedia('(pointer: coarse)').matches || (navigator.deviceMemory && navigator.deviceMemory < 4);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, lowPower ? 1.25 : 1.8));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, lowPower ? 1.1 : 1.65));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMapping = THREE.AgXToneMapping || THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
   renderer.setClearColor(0x000000, 0);
 
@@ -41,7 +42,18 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
   const composer = cinematic ? new EffectComposer(renderer) : null;
   if (composer) {
     composer.addPass(new RenderPass(scene, camera));
-    const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.24, 0.38, 0.96);
+    // Screen-space ambient occlusion puts realistic contact shadows between
+    // furniture, floor, body and wall. Only use it on reasonably capable GPUs.
+    if (renderer.capabilities.isWebGL2) {
+      const ao = new GTAOPass(scene, camera, 512, 288);
+      ao.updateGtaoMaterial({
+        radius: 0.19, distanceExponent: 1.45, thickness: 1.05,
+        scale: 1.14, samples: 10,
+      });
+      composer.addPass(ao);
+    }
+    // Subtle lens bloom; very bright halos made the previous room look cartoonish.
+    const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.11, 0.35, 1.18);
     composer.addPass(bloom);
     composer.addPass(new OutputPass());
   }
@@ -561,7 +573,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
       } else {
         const index = id === 'maya' ? 0 : 1;
         npcSystem.attachVisual(index, rig.root);
-        register(rig.root, { kind: 'npc', index, label: 'Talk to ' + (index ? 'Dev' : 'Maya') },
+        register(rig.root, { kind: 'npc', index, label: 'Talk to ' + (index ? 'Dev' : 'Mira') },
           { dir: new THREE.Vector3(), selectOffset: 0, hoverOffset: 0 });
       }
     },
@@ -573,9 +585,9 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
   if (!charUrl) realCharacters.load('ruchir', [STANDEE_POS.x, STANDEE_POS.z], { outfit: 'shirt', scale: 1.56 });
   // Defer companion downloads slightly so the main character takes priority.
   setTimeout(() => {
-    realCharacters.load('maya', [2.75, -2.8], { outfit: 'original', scale: 1.55 });
+    realCharacters.load('maya', [2.75, -2.8], { outfit: 'tee', scale: 1.55, tint: '#b4c9a4' });
     realCharacters.load('dev', [-2.9, 1.2], { outfit: 'shirt', scale: 1.55 });
-  }, 900);
+  }, 200);
   const walkRing = mesh(new THREE.RingGeometry(0.16, 0.26, 32), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false }), 0, 0.03, 0, scene, { cast: false, receive: false });
   walkRing.rotation.x = -Math.PI / 2;
   walkRing.raycast = () => {};
@@ -765,7 +777,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
   let tween = null;
   const ease = (k) => (k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2);
   const viewFov = () => (camera.aspect < 0.8 ? 38 : 26);
-  const fpFov = () => (camera.aspect < 0.8 ? 80 : 72);
+  const fpFov = () => (camera.aspect < 0.8 ? 79 : 80);
   function flyTo(view, dur = 1.2) {
     const { pos, target } = view;
     if (reducedMotion || dur === 0) {
@@ -783,6 +795,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
   let talking = false, movementLocked = false;
   const EYE = 2.75;
   const cam = { yaw: 0.93, pitch: -0.06 };
+  let lookSensitivity = 1.0, invertLookY = false;
 
   // Auto-play guided first-person tour. Tour updates the visitor's position,
   // orientation and guide NPC; no orbit or third-person camera is used.
@@ -807,7 +820,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
     player.target = null; player.vel.set(0, 0, 0); player.speed = 0;
     movementLocked = true; talking = false; lookGoal = null;
     const start = tourPlan[0];
-    npcSystem.setTourGuide(1, start.guide[0], start.guide[1], true);
+    npcSystem.setTourGuide(0, start.guide[0], start.guide[1], true);
     announceTourStop(0);
     return true;
   }
@@ -816,7 +829,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
     guided.finished = true;
     movementLocked = false;
     player.target = null; player.vel.set(0, 0, 0);
-    npcSystem.releaseTourGuide(1);
+    npcSystem.releaseTourGuide(0);
     hooks.onTourFinished?.();
   }
   const shortestAngle = (a, b) => Math.atan2(Math.sin(b - a), Math.cos(b - a));
@@ -848,11 +861,11 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
     const wantPitch = THREE.MathUtils.clamp(Math.atan2(stop.look[1] - EYE, Math.hypot(dx, dz)), -0.85, 0.9);
     cam.yaw += shortestAngle(cam.yaw, wantYaw) * Math.min(1, dt * (reducedMotion ? 7 : 3.2));
     cam.pitch += (wantPitch - cam.pitch) * Math.min(1, dt * (reducedMotion ? 7 : 3.2));
-    // Dev leads between attractions, then turns to face the visitor while narrating.
+    // Mira leads between attractions and turns to face the visitor for each narration.
     if (stop.id === 'ready' && guided.elapsed < stop.seconds * 0.52) {
-      npcSystem.setTourGuide(1, 3.92, 1.65); // guide around the beanbag and helmet
+      npcSystem.setTourGuide(0, 3.92, 1.65); // guide around the beanbag and helmet
     } else {
-      npcSystem.setTourGuide(1, stop.guide[0], stop.guide[1]);
+      npcSystem.setTourGuide(0, stop.guide[0], stop.guide[1]);
     }
   }
 
@@ -980,8 +993,11 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
     if (mode === 'follow' && down && (e.buttons || e.pointerType !== 'mouse') && pointers.size === 1 && !talking) {
       lookGoal = null;
       // drag to look around (like grabbing the view, as in Street View)
-      cam.yaw += (e.clientX - down.lx) * 0.005;
-      cam.pitch = THREE.MathUtils.clamp(cam.pitch + (e.clientY - down.ly) * 0.004, -1.15, 1.05);
+      // Same sensitivity as pointer-lock mode. Fallback drag is not accelerated.
+      const factor = 0.00185 * lookSensitivity;
+      cam.yaw -= (e.clientX - down.lx) * factor;
+      cam.pitch = THREE.MathUtils.clamp(cam.pitch -
+        (e.clientY - down.ly) * factor * (invertLookY ? -1 : 1), -1.15, 1.05);
       down.lx = e.clientX; down.ly = e.clientY;
       setHovered(null, e);
       return;
@@ -1033,9 +1049,9 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
         else { const s = Math.min(1, d / 0.5); mx = (dx / d) * s; mz = (dz / d) * s; }
       }
     } else player.target = null;
-    const maxSpeed = input.run ? 4.4 : 2.6;
-    player.vel.x = THREE.MathUtils.damp(player.vel.x, mx * maxSpeed, 12, dt);
-    player.vel.z = THREE.MathUtils.damp(player.vel.z, mz * maxSpeed, 12, dt);
+    const maxSpeed = input.run ? 3.25 : 1.85;
+    player.vel.x = THREE.MathUtils.damp(player.vel.x, mx * maxSpeed, 18, dt);
+    player.vel.z = THREE.MathUtils.damp(player.vel.z, mz * maxSpeed, 18, dt);
     before.copy(player.pos);
     const sx = player.vel.x * dt, sz = player.vel.z * dt, want = Math.hypot(sx, sz);
     player.pos.x += sx; player.pos.z += sz;
@@ -1217,7 +1233,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
     const npcMove = (state) => state === 'roam' ? 'Walk' : state === 'greet' ? 'Wave' : state === 'converse' ? 'Talk' : state === 'observe' ? 'Think' : 'Idle';
     realCharacters.update(t, dt, {
       ruchir: talking ? 'Talk' : t < greetUntil ? 'Wave' : 'Idle',
-      maya: npcMove(npcSystem.getState(0)),
+      maya: guided.active ? (npcSystem.getState(0) === 'roam' ? 'Walk' : 'Talk') : npcMove(npcSystem.getState(0)),
       dev: npcMove(npcSystem.getState(1)),
     }, near ? visitorHead : null);
     const avatarHot = !!hovered && ['avatar', 'talk'].includes(hovered.userData.hit.kind);
@@ -1246,7 +1262,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
       sp.scale.setScalar(0.08 + k * 0.16);
     });
     extras.update(t, dt, { camera });
-    firstPersonArms.root.visible = mode === 'follow';
+    firstPersonArms.root.visible = false; // cinematic first-person camera: no low-poly arms floating across the screen
     if (firstPersonArms.root.visible) {
       firstPersonArms.root.position.copy(camera.position);
       firstPersonArms.root.quaternion.copy(camera.quaternion);
@@ -1301,8 +1317,15 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
     look(dx, dy) {
       if (mode !== 'follow' || talking || guided.active) return;
       lookGoal = null;
-      cam.yaw -= dx * 0.0022;
-      cam.pitch = THREE.MathUtils.clamp(cam.pitch - dy * 0.0022, -1.15, 1.05);
+      const factor = 0.00185 * lookSensitivity;
+      cam.yaw -= THREE.MathUtils.clamp(dx, -120, 120) * factor;
+      cam.pitch = THREE.MathUtils.clamp(cam.pitch - THREE.MathUtils.clamp(dy, -120, 120) *
+        factor * (invertLookY ? -1 : 1), -1.15, 1.05);
+    },
+    setLookSettings({ sensitivity, invertY } = {}) {
+      if (sensitivity !== undefined && Number.isFinite(sensitivity))
+        lookSensitivity = THREE.MathUtils.clamp(sensitivity, 0.35, 2.5);
+      if (invertY !== undefined) invertLookY = !!invertY;
     },
     // game controls
     startGuidedTour: beginGuidedTour,
