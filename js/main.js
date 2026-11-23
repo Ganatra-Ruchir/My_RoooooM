@@ -98,17 +98,29 @@ async function boot() {
   ui.setNight(night);
   room.setNight(night, true);
 
-  function start() {
+  async function start() {
     if (started) return;
     started = true;
     clearInterval(ticker);
+    if (msg) msg.textContent = "Loading Mira's 3D character";
+    // Do not begin camera narration before the real guide exists. The tour
+    // cannot silently swap a 2D portrait for a different-looking 3D person.
+    const guide = await Promise.race([
+      room.whenGuideReady(),
+      new Promise(resolve => setTimeout(() => resolve(null), 10000)),
+    ]).catch(() => null);
     bar.style.width = '100%';
     room.start();
-    ui.beginGuidedTour();
-    room.startGuidedTour(); // automatic, first-person, movement locked until NPC finishes
+    if (guide) {
+      ui.beginGuidedTour();
+      room.startGuidedTour();
+    } else {
+      console.warn("Mira's 3D file was unavailable; no fake substitute will be shown.");
+      ui.showStart();
+    }
     setTimeout(hideLoader, 250);
   }
-  setTimeout(start, 12000); // never leave visitors stuck behind the loader
+  setTimeout(start, 10000); // never leave visitors stuck behind the loader
 }
 
 boot();
