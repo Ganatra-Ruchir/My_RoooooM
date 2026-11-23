@@ -672,3 +672,82 @@ body.drawer-open .world-hud, body.chatting .world-hud, body.pop-open .world-hud 
   .npc-caption { bottom: max(97px, calc(env(safe-area-inset-bottom) + 80px)); font-size: 12px; padding: 10px 14px; }
 }
 @media (prefers-reduced-motion: reduce) { .npc-caption { animation: none; } }
+
+
+/* Hands-off, first-person NPC room tour */
+.guided-tour-panel {
+  position: fixed; z-index: 46; top: max(91px, calc(env(safe-area-inset-top) + 88px));
+  right: max(20px, env(safe-area-inset-right));
+  width: min(342px, calc(100vw - 40px)); padding: 15px 17px;
+  color: #fff2df; border: 1px solid rgba(225, 195, 160, .36);
+  border-radius: 16px;
+  background: linear-gradient(150deg, rgba(13, 18, 25, .87), rgba(24, 29, 36, .78));
+  box-shadow: 0 15px 55px rgba(0, 0, 0, .3), inset 0 1px 0 rgba(255, 255, 255, .12);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  font-family: var(--font-ui);
+}
+.guided-tour-panel[hidden], .tour-finished[hidden] { display: none !important; }
+.guided-tour-head { display: flex; align-items: center; gap: 8px; font-size: 10px; letter-spacing: .11em; }
+.guided-tour-head strong { flex: 1; font-size: 10px; }
+.guided-tour-dot { background: #f4b581; box-shadow: 0 0 11px rgba(244, 181, 129, .85); width: 7px; height: 7px; border-radius: 50%; }
+.guided-tour-count { color: #e1c1ac; font-size: 11px; font-variant-numeric: tabular-nums; }
+.guided-tour-panel p { font: 600 16px/1.3 var(--font-ui); margin: 12px 0; letter-spacing: -.02em; }
+.guided-tour-progress { height: 4px; border-radius: 9px; overflow: hidden; background: rgba(255, 255, 255, .14); }
+.guided-tour-progress span { display: block; height: 100%; width: 0%; border-radius: inherit; background: #eca980; transition: width .14s linear; }
+.guided-tour-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; }
+.guided-tour-meta > span { font: 500 10px/1.4 var(--font-ui); color: rgba(255, 242, 224, .7); }
+.guided-tour-meta button {
+  pointer-events: auto; cursor: pointer; color: #fff3e4; font: 600 11px/1 var(--font-ui);
+  background: rgba(242, 174, 122, .13); border: 1px solid rgba(242, 174, 122, .34);
+  border-radius: 9px; padding: 9px 10px;
+}
+.guided-tour-meta button:hover { background: rgba(242, 174, 122, .24); }
+.tour-finished {
+  position: fixed; z-index: 35; right: 18px; bottom: 95px;
+  display: flex; align-items: center; gap: 15px;
+  max-width: min(460px, calc(100vw - 36px)); padding: 13px 16px;
+  background: rgba(18, 24, 31, .89); color: #fff4e9;
+  border: 1px solid rgba(252, 201, 156, .4); border-radius: 14px;
+  box-shadow: 0 14px 44px rgba(0, 0, 0, .35);
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  font-family: var(--font-ui);
+}
+.tour-finished div { display: grid; gap: 5px; min-width: 0; }
+.tour-finished strong { font-size: 11px; letter-spacing: .08em; }
+.tour-finished span { font-size: 11px; color: #ead7c3; }
+.tour-finished button {
+  border: 1px solid rgba(255, 255, 255, .48); border-radius: 9px;
+  background: #f1b48a; color: #1b1816; cursor: pointer;
+  padding: 10px 13px; white-space: nowrap; font: 700 11px var(--font-ui);
+}
+.tour-finished.soften { background: rgba(18, 24, 31, .75); }
+body.tour-active .topbar, body.tour-active .dock,
+body.tour-active .world-hud, body.tour-active .help-btn {
+  pointer-events: none; opacity: .45;
+}
+body.tour-active .marker, body.tour-active .prompt, body.tour-active .act-btn,
+body.tour-active .joy, body.tour-active #tooltip { display: none !important; }
+body.tour-active #room { cursor: default !important; }
+body.tour-active .npc-caption {
+  bottom: max(28px, calc(env(safe-area-inset-bottom) + 28px));
+  max-width: min(700px, calc(100vw - 40px));
+  font-size: 15px; line-height: 1.55;
+}
+@media(max-width: 720px) {
+  .guided-tour-panel {
+    top: max(70px, calc(env(safe-area-inset-top) + 66px));
+    right: 10px; left: 10px; width: auto; padding: 12px 14px;
+  }
+  .guided-tour-head strong { font-size: 9px; }
+  .guided-tour-panel p { margin: 8px 0; font-size: 14px; }
+  .guided-tour-meta > span { font-size: 9px; }
+  body.tour-active .npc-caption {
+    bottom: max(25px, calc(env(safe-area-inset-bottom) + 25px));
+    font-size: 12px; max-width: calc(100vw - 26px);
+  }
+  .tour-finished { left: 10px; right: 10px; bottom: 78px; gap: 12px; padding: 11px 13px; }
+  .tour-finished button { white-space: normal; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .guided-tour-progress span { transition: none; }
+}
