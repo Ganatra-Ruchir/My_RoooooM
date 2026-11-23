@@ -795,7 +795,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
   function announceTourStop(index) {
     const item = tourPlan[index];
     if (!item) return;
-    hooks.onTourStep?.({ index, total: tourPlan.length, title: item.title, text: item.say, id: item.id });
+    hooks.onTourStep?.({ index, total: tourPlan.length, title: item.title, text: item.say, seconds: item.seconds, id: item.id });
   }
   function beginGuidedTour() {
     if (guided.active || guided.finished || !tourPlan.length) return false;
