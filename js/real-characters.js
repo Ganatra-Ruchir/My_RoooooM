@@ -210,6 +210,20 @@ export function createRealCharacters({ scene, onLoaded = () => {}, onError = () 
   const loading = new Map();
   function load(id, position, options = {}) {
     if (loading.has(id)) return loading.get(id);
+    if (id === 'maya') {
+      // The user-supplied 21 MB VRM is the only Mira. Do not substitute Emma,
+      // show a 2D card, or change facial/clothing geometry when loading.
+      const task = import('./vrm-meera.js')
+        .then(({ loadMeeraVRM }) => loadMeeraVRM({
+          x: position[0], z: position[1], scale: options.scale || 1.55,
+        }))
+        .then(rig => {
+          rigs.set(id, rig); scene.add(rig.root); onLoaded(id, rig); return rig;
+        })
+        .catch(err => { onError(id, err); return null; });
+      loading.set(id, task);
+      return task;
+    }
     if (!CATALOG[id]) return Promise.reject(new Error('Unknown realistic character ' + id));
     const task = loader.loadAsync(SOURCE + CATALOG[id])
       .then(gltf => {
@@ -231,7 +245,8 @@ export function createRealCharacters({ scene, onLoaded = () => {}, onError = () 
     load,
     get(id) { return rigs.get(id); },
     update(t, dt, moves = {}, target = null) {
-      for (const [id, rig] of rigs) rig.update(t, dt, moves[id] || 'Idle', id === 'ruchir' ? target : null);
+      for (const [id, rig] of rigs) rig.update(t, dt, moves[id] || 'Idle',
+        (id === 'ruchir' || id === 'maya') ? target : null);
     },
     // Models are not synthesized from user portraits; the Ruchir likeness is a future custom asset.
     source: SOURCE,
