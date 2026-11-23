@@ -9,6 +9,7 @@ import { buildExtras } from './extras.js';
 import { createVisitor, collide, addObstacle } from './player.js';
 import { createNPCSystem } from './npc.js';
 import { createFirstPersonArms } from './first-person.js';
+import { createRealCharacters } from './real-characters.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
@@ -490,6 +491,9 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
 
   // ...or his character art as a life-size standee beside the desk (set profile.character in data.js)
   const charUrl = new URLSearchParams(location.search).get('character') || data.profile.character;
+  // Keep the sculpted placeholder completely out of sight while the real skinned mesh loads.
+  // A failed fetch restores it, rather than leaving a broken room.
+  if (!charUrl) avatar.person.visible = false;
   if (charUrl) {
     const root = new THREE.Group(); root.position.copy(STANDEE_POS); scene.add(root);
     const picMat = new THREE.MeshBasicMaterial({ alphaTest: 0.5, side: THREE.DoubleSide, toneMapped: false });
@@ -518,6 +522,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
     register(root, { kind: 'talk', index: 0, label: "Ruchir — say hi 👋" }, { dir: new THREE.Vector3(0, 0, 0), selectOffset: 0, hoverOffset: 0 });
   }
   const ruchirHead = (out) => {
+    if (ruchir.real) return ruchir.real.headWorld(out);
     if (ruchir.standee) return out.copy(ruchir.standee.root.position).setY(ruchir.standee.height * 0.9);
     return avatar.head.getWorldPosition(out).add(new THREE.Vector3(0, 0.3, 0));
   };
@@ -534,6 +539,42 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
     scene, reducedMotion,
     onGreet: (index, line) => hooks.onNpcGreet?.(index, line),
   });
+  // Replace primitive people with genuine 3D human meshes, skinned skeletons,
+  // real fabric/skin maps and bundled motion-capture animations.
+  const realCharacters = createRealCharacters({
+    scene,
+    onLoaded(id, rig) {
+      if (id === 'ruchir') {
+        if (charUrl) { scene.remove(rig.root); return; } // query-string standee remains an explicit override
+        ruchir.real = rig;
+        ruchir.pos.copy(STANDEE_POS);
+        avatar.person.visible = false;
+        avatar.person.traverse(o => { if (o.isMesh) o.raycast = () => {}; });
+        const index = interactive.indexOf(avatar.person);
+        if (index >= 0) interactive.splice(index, 1);
+        avatar.chair.position.set(0.15, 0, -0.25);
+        avatar.chair.rotation.y = 0.5;
+        register(rig.root, { kind: 'talk', index: 0, label: 'Talk to Ruchir' },
+          { dir: new THREE.Vector3(), selectOffset: 0, hoverOffset: 0 });
+        addObstacle([STANDEE_POS.x, STANDEE_POS.z, 0.44]);
+      } else {
+        const index = id === 'maya' ? 0 : 1;
+        npcSystem.attachVisual(index, rig.root);
+        register(rig.root, { kind: 'npc', index, label: 'Talk to ' + (index ? 'Dev' : 'Maya') },
+          { dir: new THREE.Vector3(), selectOffset: 0, hoverOffset: 0 });
+      }
+    },
+    onError(id, error) {
+      console.warn('Realistic character could not load, using fallback:', id, error);
+      if (id === 'ruchir' && !charUrl) avatar.person.visible = true;
+    },
+  });
+  if (!charUrl) realCharacters.load('ruchir', [STANDEE_POS.x, STANDEE_POS.z], { outfit: 'shirt', scale: 1.56 });
+  // Defer companion downloads slightly so the main character takes priority.
+  setTimeout(() => {
+    realCharacters.load('maya', [2.75, -2.8], { outfit: 'original', scale: 1.55 });
+    realCharacters.load('dev', [-2.9, 1.2], { outfit: 'shirt', scale: 1.55 });
+  }, 900);
   const walkRing = mesh(new THREE.RingGeometry(0.16, 0.26, 32), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false }), 0, 0.03, 0, scene, { cast: false, receive: false });
   walkRing.rotation.x = -Math.PI / 2;
   walkRing.raycast = () => {};
@@ -977,7 +1018,8 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
     if (!p) return null;
     if (p.root) return p.root;
     if (p.kind === 'cert') return certRoots[p.index];
-    if (p.kind === 'talk') return ruchir.standee ? ruchir.standee.root : avatar.person;
+    if (p.kind === 'talk') return ruchir.real?.root || (ruchir.standee ? ruchir.standee.root : avatar.person);
+    if (p.kind === 'npc') return realCharacters.get(p.index ? 'dev' : 'maya')?.root || null;
     if (p.kind === 'contact') return neon;
     return interactive.find((o) => o.userData.hit.kind === p.kind) || null;
   }
@@ -1094,6 +1136,12 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
     if (near && !wasNear) greetUntil = t + 1.8;
     wasNear = near;
     if (mode === 'follow') visitorHead.copy(camera.position); else visitor.head.getWorldPosition(visitorHead);
+    const npcMove = (state) => state === 'roam' ? 'Walk' : state === 'greet' ? 'Wave' : state === 'converse' ? 'Talk' : state === 'observe' ? 'Think' : 'Idle';
+    realCharacters.update(t, dt, {
+      ruchir: talking ? 'Talk' : t < greetUntil ? 'Wave' : 'Idle',
+      maya: npcMove(npcSystem.getState(0)),
+      dev: npcMove(npcSystem.getState(1)),
+    }, near ? visitorHead : null);
     const avatarHot = !!hovered && ['avatar', 'talk'].includes(hovered.userData.hit.kind);
     if (avatar.person.visible) {
       avatar.update(t, dt, {
