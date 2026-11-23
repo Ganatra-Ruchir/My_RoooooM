@@ -58,7 +58,7 @@ export function guidedTourPlan({ profile, projects, workbench, certificates, art
     },
     {
       id: 'return', title: 'Back to the entrance', seconds: 4.6,
-      pos: [3.76, 4.03], look: [3.1, 2.55, 2.4], guide: [3.85, 3.05],
+      pos: [3.76, 4.03], look: [3.1, 2.55, 2.4], guide: [4.3, 3.85],
       say: 'That’s the tour. We’re heading back to the entrance, where you can explore at your own pace.',
     },
     {
