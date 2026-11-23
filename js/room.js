@@ -1190,6 +1190,8 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
     toggleMap() { if (mode !== 'follow') setMode('follow'); return 'follow'; },
     get mode() { return mode; },
     get playerPos() { return player.pos.clone(); },
+    get playerYaw() { return cam.yaw; },
+    npcPositions() { return npcSystem.anchors(); },
     // dev helper: fast-forward the room (used with ?debug when the tab is throttled)
     simulate(seconds, fps = 60) { const n = Math.round(seconds * fps); for (let i = 0; i < n; i++) tick(1 / fps, i === n - 1); },
     ruchirHead() { return ruchirHead(new THREE.Vector3()); },
