@@ -491,15 +491,15 @@ export function createUI({ room = null }) {
   const canvasEl = document.getElementById('room');
   let playing = false;          // has the visitor clicked "play" yet?
   const panelOpen = () => drawer.classList.contains('open') || !list.hidden || chat.isOpen || !!popKind;
-  let lockFailed = false, wasLocked = false;
-  // If the browser refuses mouse lock (embedded pages, some browsers), keep playing with drag-to-look.
+  let wasLocked = false;
+  // After Esc or a closed panel, pointer lock must be requested by another real click.
+  // A refused request must NOT permanently disable mouse-look.
   function lockDenied() {
-    if (lockFailed) return;
-    lockFailed = true;
-    toast('Drag with the mouse to look around');
+    body.classList.add('click-to-look');
+    toast('Click the room to control the camera, or drag to look');
   }
   function lockMouse() {
-    if (!room || touch || lockFailed || !canvasEl.requestPointerLock || document.pointerLockElement) return;
+    if (!room || touch || !canvasEl.requestPointerLock || document.pointerLockElement || room.isTouring) return;
     try {
       const p = canvasEl.requestPointerLock();
       if (p && p.catch) p.catch(lockDenied);
@@ -520,20 +520,26 @@ export function createUI({ room = null }) {
     $('#playBtn').textContent = paused ? '▶ Resume' : touch ? '▶ Tap to play' : '▶ Click to play';
     play.hidden = false;
     body.classList.add('at-play');
+    body.classList.remove('at-game');
     room.setInput({ x: 0, y: 0, turn: 0, run: false });
   }
   function startPlaying() {
+    if (room?.isTouring) return;
     play.hidden = true;
-    body.classList.remove('at-play');
+    body.classList.remove('at-play', 'click-to-look');
+    body.classList.add('at-game');
     playing = true;
-    goFullscreen();
+    // Mouse lock comes first: continuous mouse control is more important than
+    // fullscreen if a browser only allows one privileged request per click.
     lockMouse();
+    goFullscreen();
   }
   $('#playBtn').addEventListener('click', startPlaying);
   $('#playText').addEventListener('click', () => { play.hidden = true; body.classList.remove('at-play'); toggleList(true); });
   document.addEventListener('pointerlockchange', () => {
     const locked = document.pointerLockElement === canvasEl;
     body.classList.toggle('locked', locked);
+    if (locked) body.classList.remove('click-to-look');
     // pressed Esc while playing: pause, unless a panel is what took the mouse away
     if (!locked && wasLocked && playing && !panelOpen()) showPlay('pause');
     wasLocked = locked;
@@ -541,7 +547,10 @@ export function createUI({ room = null }) {
   document.addEventListener('pointerlockerror', lockDenied);
   // panels need the mouse; when they close, go straight back to mouse look
   const panelOpened = () => releaseMouse();
-  const panelClosed = () => { if (playing && !panelOpen()) lockMouse(); };
+  const panelClosed = () => {
+    // Never attempt pointer lock from timers; a new real user click is required.
+    if (playing && !panelOpen()) body.classList.add('click-to-look');
+  };
   canvasEl.addEventListener('click', () => { if (playing && !panelOpen() && !document.pointerLockElement && play.hidden) lockMouse(); });
   function toggleFullscreen() {
     if (!document.documentElement.requestFullscreen) return;
@@ -637,16 +646,18 @@ export function createUI({ room = null }) {
     if (!voiceEnabled || !('speechSynthesis' in window) || !('SpeechSynthesisUtterance' in window)) return;
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
-    u.lang = 'en-IN'; u.rate = 1.17; u.pitch = 1; u.volume = 0.94;
+    u.lang = 'en-IN'; u.rate = 1.04; u.pitch = 1.08; u.volume = 0.94;
     const voices = window.speechSynthesis.getVoices();
-    u.voice = voices.find(v => v.lang.toLowerCase() === 'en-in')
+    const femaleVoice = /Samantha|Zira|Aria|Jenny|Victoria|Karen|Female|Neerja|Heera/i;
+    u.voice = voices.find(v => /^en/i.test(v.lang) && femaleVoice.test(v.name))
+      || voices.find(v => v.lang.toLowerCase() === 'en-in')
       || voices.find(v => v.lang.toLowerCase().startsWith('en')) || null;
     try { window.speechSynthesis.speak(u); } catch { /* subtitles remain visible */ }
   }
   if (!('speechSynthesis' in window)) tourVoice.hidden = true;
   tourVoice?.addEventListener('click', () => {
     voiceEnabled = !voiceEnabled;
-    tourVoice.textContent = voiceEnabled ? 'Mute voice' : 'Enable voice';
+    tourVoice.textContent = voiceEnabled ? 'Mute Mira' : '◉ Hear Mira';
     tourVoice.setAttribute('aria-pressed', String(voiceEnabled));
     if (!voiceEnabled) window.speechSynthesis?.cancel();
     else if (currentNarration) speakGuide(currentNarration);
@@ -666,8 +677,19 @@ export function createUI({ room = null }) {
     const count = (String(step.index + 1)).padStart(2, '0');
     $('#tourCount').textContent = count + ' / ' + step.total;
     $('#tourStopTitle').textContent = step.title;
+    $('#tourCategory').textContent = step.category || 'ROOM TOUR';
+    const tags = $('#tourTags');
+    tags.replaceChildren();
+    (step.tags || []).slice(0, 7).forEach(t => {
+      const badge = document.createElement('span');
+      badge.textContent = String(t); // no HTML injection from portfolio content
+      tags.appendChild(badge);
+    });
+    const focus = $('#tourFocus'), focusImage = $('#tourFocusImage');
+    focus.hidden = !step.image;
+    if (step.image) focusImage.src = step.image;
     currentNarration = step.text;
-    showNpcLine(1, 'Dev · Room Guide: ' + step.text, (step.seconds + 0.2) * 1000);
+    showNpcLine(0, 'Mira · Your guide: ' + step.text, (step.seconds + 0.25) * 1000);
     speakGuide(step.text);
   }
   function updateTourProgress() {
@@ -680,14 +702,31 @@ export function createUI({ room = null }) {
     body.classList.remove('tour-active');
     tourPanel.hidden = true;
     tourFinished.hidden = false;
-    playing = true; // keyboard movement is already unlocked; click canvas to lock look
-    setTimeout(() => { if (!tourFinished.hidden) tourFinished.classList.add('soften'); }, 5500);
+    playing = false; // explicit Start Exploring click grants real pointer-lock permission
     if (voiceEnabled) window.speechSynthesis?.cancel();
-    showNpcLine(1, 'Dev · Tour complete. You can explore freely now!', 7000);
+    showNpcLine(0, 'Mira · Your guide: The tour is complete. Click Start Exploring to take control.', 8000);
   }
   $('#tourExploreBtn')?.addEventListener('click', () => {
     tourFinished.hidden = true;
-    startPlaying(); // real click: the browser can enter fullscreen and request pointer lock
+    startPlaying(); // deliberate user gesture enables continuous game mouse-look
+  });
+  const mouseSlider = $('#mouseSensitivity'), speedOutput = $('#mouseSensitivityValue');
+  const invert = $('#invertMouse');
+  const savedSensitivity = Number(store.get('mouseSensitivity', 1));
+  const currentSensitivity = Number.isFinite(savedSensitivity) ? Math.max(0.35, Math.min(2.5, savedSensitivity)) : 1;
+  if (mouseSlider) mouseSlider.value = String(currentSensitivity);
+  if (speedOutput) speedOutput.textContent = currentSensitivity.toFixed(2) + '×';
+  if (invert) invert.checked = !!store.get('invertMouse', false);
+  room?.setLookSettings({ sensitivity: currentSensitivity, invertY: invert?.checked });
+  mouseSlider?.addEventListener('input', () => {
+    const value = Number(mouseSlider.value);
+    room?.setLookSettings({ sensitivity: value });
+    speedOutput.textContent = value.toFixed(2) + '×';
+    store.set('mouseSensitivity', value);
+  });
+  invert?.addEventListener('change', () => {
+    room?.setLookSettings({ invertY: invert.checked });
+    store.set('invertMouse', invert.checked);
   });
 
   const minimap = $('#roomMiniMap');
