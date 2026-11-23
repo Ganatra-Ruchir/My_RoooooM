@@ -64,7 +64,7 @@ export function guidedTourPlan({ profile, projects, workbench, certificates, art
     {
       id: 'ready', title: 'You are in control', seconds: 4.4,
       pos: [3.9, 2.95], look: [3.6, 2.6, 1.35], guide: [3.6, 1.35],
-      say: 'You’re free to roam now! Use W, A, S, D to walk, drag or move your mouse to look around, and press E to interact. Have fun!',
+      say: 'And that's the full tour! I'm handing over control now. Use W, A, S, D to walk, the mouse to look around, and E to interact. Have fun!',
     },
   ];
 }
