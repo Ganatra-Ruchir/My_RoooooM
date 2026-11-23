@@ -80,7 +80,9 @@ async function boot() {
         onHover: (hit, e) => ui?.onHover(hit, e),
         onFrame: () => ui?.updateMarkers(),
         onWriting: (a) => ui?.setWriting(a),
-        onNpcGreet: (index, message) => ui?.showNpcLine(index, message),
+        onNpcGreet: (index, message) => { if (!room?.isTouring) ui?.showNpcLine(index, message); },
+        onTourStep: (step) => ui?.showTourStep(step),
+        onTourFinished: () => ui?.completeGuidedTour(),
       },
     });
   } catch (err) {
@@ -102,7 +104,8 @@ async function boot() {
     clearInterval(ticker);
     bar.style.width = '100%';
     room.start();
-    ui.showStart(); // "Click to play": goes full screen and locks the mouse for first-person look
+    ui.beginGuidedTour();
+    room.startGuidedTour(); // automatic, first-person, movement locked until NPC finishes
     setTimeout(hideLoader, 250);
   }
   setTimeout(start, 12000); // never leave visitors stuck behind the loader
