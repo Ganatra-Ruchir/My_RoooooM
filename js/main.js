@@ -107,7 +107,7 @@ async function boot() {
     // cannot silently swap a 2D portrait for a different-looking 3D person.
     const guide = await Promise.race([
       room.whenGuideReady(),
-      new Promise(resolve => setTimeout(() => resolve(null), 10000)),
+      new Promise(resolve => setTimeout(() => resolve(null), 55000)),
     ]).catch(() => null);
     bar.style.width = '100%';
     room.start();
