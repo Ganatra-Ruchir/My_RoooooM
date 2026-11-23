@@ -8,7 +8,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 const SOURCE = 'https://cdn.jsdelivr.net/gh/memoriesrohit/avatar-studio@2fd9ec82fbe1613d40ae38aadcca3f410725f740/models/';
 const CATALOG = Object.freeze({
   ruchir: 'arjun_smart.glb', // realistic South Asian-featured model, placeholder for a custom likeness
-  maya: 'priya_casual.glb',
+  maya: 'emma_casual.glb', // real skinned woman; reference-photo likeness remains a still image, not fabricated 3D
   dev: 'ryan_smart.glb',
 });
 const NAMED_PARTS = new Set([
@@ -18,17 +18,18 @@ const NAMED_PARTS = new Set([
 const meshLabel = (o) => (o.name && !/^mesh_\d|_\d+$/.test(o.name) ? o.name : o.parent?.name ?? o.name);
 const clamp = THREE.MathUtils.clamp;
 
-function prepareModel(model, outfit) {
+function prepareModel(model, outfit, tint = null) {
   const showing = outfit === 'shirt'
     ? new Set(['Top_shirt', 'Skin_shirt', 'Trousers', 'Shoes'])
     : outfit === 'formal'
       ? new Set(['Outfit_formal', 'Skin_formal'])
       : new Set(['Outfit_original', 'Skin_original']);
-  let hasShirt = false, hasOriginal = false;
+  let hasShirt = false, hasTee = false, hasOriginal = false;
   model.traverse(o => {
     if (!o.isMesh) return;
     const label = meshLabel(o);
     if (label === 'Top_shirt') hasShirt = true;
+    if (label === 'Top_tee') hasTee = true;
     if (label === 'Outfit_original') hasOriginal = true;
   });
   model.traverse(o => {
@@ -51,12 +52,15 @@ function prepareModel(model, outfit) {
       }
       if (label === 'Trousers' && outfit === 'shirt') m.color.multiply(new THREE.Color('#39383d'));
       if (label === 'Top_shirt') m.color.multiply(new THREE.Color('#f6f4ee'));
+      if (label === 'Top_tee' && tint) m.color.multiply(new THREE.Color(tint));
       m.needsUpdate = true; o.material = m;
     }
     if (NAMED_PARTS.has(label)) {
-      const selected = outfit === 'shirt' && !hasShirt ? 'original' : outfit;
+      const selected = (outfit === 'shirt' && !hasShirt) || (outfit === 'tee' && !hasTee) ? 'original' : outfit;
       const enabled = selected === 'shirt'
         ? new Set(['Top_shirt', 'Skin_shirt', 'Trousers', 'Shoes'])
+        : selected === 'tee'
+          ? new Set(['Top_tee', 'Skin_tee', 'Trousers', 'Shoes'])
         : selected === 'formal'
           ? new Set(['Outfit_formal', 'Skin_formal'])
           : new Set(['Outfit_original', 'Skin_original']);
@@ -86,14 +90,14 @@ function noRootMotion(clip) {
   return copy;
 }
 
-function createRig(gltf, id, mode, { x, z, scale }) {
+function createRig(gltf, id, mode, { x, z, scale, tint }) {
   const root = new THREE.Group();
   root.name = 'real-' + id;
   root.position.set(x, 0, z);
   const model = gltf.scene;
   model.scale.setScalar(scale);
   root.add(model);
-  prepareModel(model, mode);
+  prepareModel(model, mode, tint);
   const mixer = new THREE.AnimationMixer(model);
   const actions = {};
   for (const clip of gltf.animations) actions[clip.name] = mixer.clipAction(noRootMotion(clip));
@@ -164,6 +168,7 @@ export function createRealCharacters({ scene, onLoaded = () => {}, onError = () 
         if (!gltf.scene || !gltf.scene.children.length) throw new Error(id + ' GLB has no scene');
         const rig = createRig(gltf, id, options.outfit || 'original', {
           x: position[0], z: position[1], scale: options.scale || 1.56,
+          tint: options.tint || null,
         });
         rigs.set(id, rig);
         scene.add(rig.root);
