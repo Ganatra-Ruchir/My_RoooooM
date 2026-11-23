@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Ruchir's Room — Ruchir Ganatra</title>
+  <meta name="description" content="Step into Ruchir Ganatra's room: a Data & Digital Systems Analyst in Ahmedabad. Certificates on the wall, projects on the shelf and articles on the desk.">
+  <meta name="theme-color" content="#f6ede2">
+  <meta property="og:title" content="Ruchir's Room — Ruchir Ganatra">
+  <meta property="og:description" content="An interactive 3D room portfolio: certificates, projects and articles by Ruchir Ganatra.">
+  <meta property="og:image" content="assets/ruchir-ganatra.png">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23c2562f'/%3E%3Ctext x='32' y='43' font-family='Georgia,serif' font-size='28' font-weight='700' text-anchor='middle' fill='%23fff8ec'%3ERG%3C/text%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="css/style.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body data-mode="day">
+  <a class="skip" href="#list" id="skipLink">Skip to the text version</a>
+
+  <div id="stage">
+    <canvas id="room" role="img" aria-label="A 3D room: Ruchir typing at his desk, certificates framed on the green wall, projects on the bookshelf and journals of his articles on the desk."></canvas>
+  </div>
+  <div id="markers"></div>
+  <div id="tooltip" aria-hidden="true"></div>
+  <div class="pop" id="pop" role="dialog" aria-label="Room object" hidden>
+    <button class="icon-btn small pop-x" id="popClose" type="button" aria-label="Close"></button>
+    <div class="pop-body" id="popBody"></div>
+  </div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div class="crosshair" aria-hidden="true"></div>
+  <button class="prompt" id="prompt" type="button" hidden><kbd>E</kbd><span id="promptText"></span></button>
+
+  <!-- touch controls -->
+  <div class="joy" id="joy" aria-hidden="true"><span class="joy-knob" id="joyKnob"></span></div>
+  <button class="act-btn" id="actBtn" type="button" aria-label="Interact" hidden>✋</button>
+
+  <!-- click to play / paused -->
+  <div class="play" id="play" hidden>
+    <div class="play-card">
+      <p class="play-kicker" id="playKicker">Ruchir Ganatra · Portfolio</p>
+      <h1 id="playTitle">Ruchir's Room</h1>
+      <p class="play-sub" id="playSub">Walk in, look around and come say hi. Everything in this room is part of my work.</p>
+      <button class="btn primary play-btn" id="playBtn" type="button">▶ Click to play</button>
+      <ul class="help-keys play-keys" id="playKeys"></ul>
+      <button class="ghost-btn play-text" id="playText" type="button">Prefer reading? Open the text version</button>
+    </div>
+  </div>
+
+  <!-- controls help -->
+  <aside class="help" id="help" aria-label="Controls" hidden>
+    <p class="help-title">Explore the room</p>
+    <ul class="help-keys" id="helpKeys"></ul>
+  </aside>
+  <button class="help-btn" id="helpBtn" type="button" aria-label="Show controls (H)">?</button>
+
+  <!-- talking to Ruchir -->
+  <section class="chat" id="chat" hidden aria-label="Chat with Ruchir">
+    <div class="chat-art" id="chatArt" aria-hidden="true"></div>
+    <div class="chat-card" role="dialog" aria-labelledby="chatName">
+      <header class="chat-head">
+        <img class="chat-face" id="chatFace" alt="" width="44" height="44">
+        <div class="chat-who"><strong id="chatName">Ruchir Ganatra</strong><span>Data &amp; Digital Systems Analyst · replies instantly</span></div>
+        <button class="icon-btn small" id="chatClose" type="button" aria-label="End conversation (Esc)">✕</button>
+      </header>
+      <div class="chat-log" id="chatLog" aria-live="polite"></div>
+      <div class="chat-chips" id="chatChips"></div>
+      <form class="chat-form" id="chatForm" autocomplete="off">
+        <input id="chatInput" type="text" maxlength="200" placeholder="Ask me anything… e.g. what do you do?" aria-label="Your message">
+        <button class="btn primary" type="submit">Send</button>
+      </form>
+    </div>
+  </section>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="mono" aria-hidden="true">RG</span>
+      <div class="brand-text">
+        <strong>Ruchir Ganatra</strong>
+        <span>Data &amp; Digital Systems Analyst · Ahmedabad</span>
+      </div>
+    </div>
+    <p class="now" id="now" aria-live="off"><span class="dot" aria-hidden="true"></span><span class="now-label">Now drafting</span><em id="nowTitle"></em></p>
+    <div class="actions">
+      <button class="pill-btn secrets-btn" id="secretsBtn" type="button" aria-label="Room secrets found"></button>
+      <button class="icon-btn" id="fsBtn" type="button" aria-label="Full screen (F)"></button>
+      <button class="icon-btn" id="modeBtn" type="button" aria-label="Switch to night"></button>
+      <button class="pill-btn" id="listBtn" type="button"></button>
+    </div>
+  </header>
+
+  <nav class="dock" aria-label="Room sections">
+    <button type="button" data-go="about"></button>
+    <button type="button" data-go="certs"></button>
+    <button type="button" data-go="projects"></button>
+    <button type="button" data-go="articles"></button>
+    <button type="button" data-go="contact"></button>
+  </nav>
+
+
+  <aside class="drawer" id="drawer" role="dialog" aria-modal="false" aria-labelledby="drawerTitle" aria-hidden="true">
+    <div class="drawer-head">
+      <button class="ghost-btn" id="drawerBack" type="button" hidden></button>
+      <span class="crumb" id="drawerCrumb"></span>
+      <button class="icon-btn small" id="drawerClose" type="button" aria-label="Close panel"></button>
+    </div>
+    <div class="drawer-body" id="drawerBody" tabindex="-1"></div>
+  </aside>
+
+  <main class="list" id="list" hidden></main>
+
+  <noscript>
+    <div class="noscript">
+      <h1>Ruchir Ganatra</h1>
+      <p>Data &amp; Digital Systems Analyst · Ahmedabad, India. This room needs JavaScript; you can still reach me here:</p>
+      <p><a href="mailto:thakkerruchir044@gmail.com">thakkerruchir044@gmail.com</a> · <a href="https://github.com/Ganatra-Ruchir">GitHub</a> · <a href="https://www.linkedin.com/in/ganatra-ruchir-61a2a2358/">LinkedIn</a> · <a href="https://ruchirganatra.medium.com">Medium</a> · <a href="assets/Ruchir_Ganatra_Resume.pdf">Résumé</a></p>
+    </div>
+  </noscript>
+
+  <div class="loader" id="loader">
+    <div class="loader-card">
+      <p class="loader-kicker">Knock knock…</p>
+      <h1>Ruchir's room</h1>
+      <div class="bar" aria-hidden="true"><span id="loadBar"></span></div>
+      <p class="loader-msg" id="loadMsg">Hanging the certificates</p>
+    </div>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
