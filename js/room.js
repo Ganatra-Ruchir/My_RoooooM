@@ -843,18 +843,30 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
   const tourLength = tourPlan.reduce((total, stop) => total + stop.seconds, 0);
   const guided = {
     active: false, finished: false, index: 0, elapsed: 0, total: 0,
+    beat: 'speaker', fov: 80,
+    focus: new THREE.Vector3(), face: new THREE.Vector3(),
     from: new THREE.Vector2(SPAWN.x, SPAWN.z), last: new THREE.Vector2(SPAWN.x, SPAWN.z),
   };
-  function announceTourStop(index) {
+  function announceTourStop(index, beat = 'speaker') {
     const item = tourPlan[index];
     if (!item) return;
-    hooks.onTourStep?.({ index, total: tourPlan.length, title: item.title, category: item.category, tags: item.tags, image: item.image, text: item.say, seconds: item.seconds, id: item.id });
+    const speaker = beat === 'speaker';
+    const text = speaker ? item.speakerSay : item.exhibitSay;
+    if (!text) return;
+    const seconds = item.seconds * (speaker ? item.beatSwitch : 1 - item.beatSwitch);
+    hooks.onTourStep?.({
+      index, total: tourPlan.length,
+      title: item.title, category: item.category, tags: item.tags,
+      image: item.image, beat, text, seconds, id: item.id,
+    });
   }
   function beginGuidedTour() {
     if (guided.active || guided.finished || !tourPlan.length) return false;
     if (mode !== 'follow') setMode('follow');
     guided.active = true;
     guided.index = 0; guided.elapsed = 0; guided.total = 0;
+    guided.beat = 'speaker'; guided.fov = 80;
+    fp.blend = 1; // absolutely no old overview-camera interpolation during the tour
     guided.from.set(player.pos.x, player.pos.z);
     guided.last.copy(guided.from);
     player.target = null; player.vel.set(0, 0, 0); player.speed = 0;
@@ -878,40 +890,79 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
     hooks.onTourFinished?.();
   }
   const shortestAngle = (a, b) => Math.atan2(Math.sin(b - a), Math.cos(b - a));
+  // Camera grammar: travel → close-up on speaking Mira → optical zoom
+  // onto the real 3D item/wall. Both shots come from the visitor's eyes.
   function updateGuidedTour(dt) {
     if (!guided.active) return;
     guided.total += dt;
     guided.elapsed += dt;
     let stop = tourPlan[guided.index];
-    // Progress through authored stops even when a background tab has been throttled.
-    if (guided.elapsed >= stop.seconds) {
+    // Advance by elapsed scene-time, even if the browser briefly throttles.
+    while (stop && guided.elapsed >= stop.seconds) {
       guided.elapsed -= stop.seconds;
       guided.index += 1;
       if (guided.index >= tourPlan.length) { finishGuidedTour(); return; }
       stop = tourPlan[guided.index];
       guided.from.set(player.pos.x, player.pos.z);
-      announceTourStop(guided.index);
+      guided.beat = 'speaker';
+      announceTourStop(guided.index, 'speaker');
     }
-    // Camera travels as the visitor's own eyes at a steady standing eye height.
-    // Hold on each featured object long enough to read the on-screen explanation.
-    const travelTime = Math.max(0.6, stop.seconds * 0.72);
-    const k = ease(Math.min(1, guided.elapsed / travelTime));
-    player.pos.x = THREE.MathUtils.lerp(guided.from.x, stop.pos[0], k);
-    player.pos.z = THREE.MathUtils.lerp(guided.from.y, stop.pos[1], k);
+    const t = Math.max(0, Math.min(1, guided.elapsed / stop.seconds));
+    const travelFrac = Math.min(0.30, 3.6 / stop.seconds);
+    const travelK = ease(Math.min(1, t / travelFrac));
+    player.pos.x = THREE.MathUtils.lerp(guided.from.x, stop.pos[0], travelK);
+    player.pos.z = THREE.MathUtils.lerp(guided.from.y, stop.pos[1], travelK);
     collide(player.pos);
-    player.speed = Math.min(2.6, guided.last.distanceTo(new THREE.Vector2(player.pos.x, player.pos.z)) / Math.max(dt, 0.001));
+    player.speed = Math.min(2.2, guided.last.distanceTo(new THREE.Vector2(player.pos.x, player.pos.z)) / Math.max(dt, 0.001));
     guided.last.set(player.pos.x, player.pos.z);
-    const dx = stop.look[0] - player.pos.x, dz = stop.look[2] - player.pos.z;
-    const wantYaw = Math.atan2(-dx, -dz);
-    const wantPitch = THREE.MathUtils.clamp(Math.atan2(stop.look[1] - EYE, Math.hypot(dx, dz)), -0.85, 0.9);
-    cam.yaw += shortestAngle(cam.yaw, wantYaw) * Math.min(1, dt * (reducedMotion ? 7 : 3.2));
-    cam.pitch += (wantPitch - cam.pitch) * Math.min(1, dt * (reducedMotion ? 7 : 3.2));
-    // Mira leads between attractions and turns to face the visitor for each narration.
-    if (stop.id === 'ready' && guided.elapsed < stop.seconds * 0.52) {
-      npcSystem.setTourGuide(0, 3.92, 1.65); // guide around the beanbag and helmet
-    } else {
-      npcSystem.setTourGuide(0, stop.guide[0], stop.guide[1]);
+
+    // The real guide must face the viewer, with no cut to a mismatched still image.
+    npcSystem.setTourGuide(0, stop.guide[0], stop.guide[1]);
+    const rig = realCharacters.get('maya');
+    const anchor = npcSystem.anchors()[0];
+    guided.face.set(anchor.x, 2.85, anchor.z);
+    if (rig) {
+      rig.headWorld(guided.face);
+      // Safe bounds for head bones across GLB rigs and initial animation poses.
+      if (!Number.isFinite(guided.face.y) ||
+          guided.face.y < 1.25 || guided.face.y > 4.8) {
+        guided.face.set(anchor.x, 2.85, anchor.z);
+      }
     }
+    // Frame head AND shoulders; don't move the camera inside the head mesh.
+    guided.face.y -= 0.13;
+    const target = new THREE.Vector3(stop.look[0], stop.look[1], stop.look[2]);
+    const hasExhibit = !!stop.exhibitSay;
+    if (hasExhibit && t >= stop.beatSwitch && guided.beat !== 'exhibit') {
+      guided.beat = 'exhibit';
+      announceTourStop(guided.index, 'exhibit');
+    }
+    // Smooth change of attention (like a movie's motivated rack-and-pan shot).
+    const revealBlend = hasExhibit
+      ? ease(Math.max(0, Math.min(1, (t - stop.beatSwitch + 0.015) / 0.23)))
+      : 0;
+    guided.focus.lerpVectors(guided.face, target, revealBlend);
+    const dx = guided.focus.x - player.pos.x;
+    const dz = guided.focus.z - player.pos.z;
+    const dist = Math.max(0.5, Math.hypot(dx, dz));
+    const wantYaw = Math.atan2(-dx, -dz);
+    const wantPitch = THREE.MathUtils.clamp(
+      Math.atan2(guided.focus.y - EYE, dist), -0.86, 0.82);
+    cam.yaw += shortestAngle(cam.yaw, wantYaw) * Math.min(1, dt * 4.2);
+    cam.pitch += (wantPitch - cam.pitch) * Math.min(1, dt * 4.2);
+
+    const faceDistance = Math.max(1.5, Math.hypot(
+      guided.face.x - player.pos.x, guided.face.z - player.pos.z));
+    // Calibrated per shot distance: a close head-and-shoulders portrait,
+    // not a giant distorted face covering the whole screen.
+    const faceFov = THREE.MathUtils.clamp(
+      THREE.MathUtils.radToDeg(2 * Math.atan(1.72 / (2 * faceDistance))), 34, 58);
+    const exhibitDistance = Math.hypot(target.x - player.pos.x, target.z - player.pos.z);
+    const exhibitFov = THREE.MathUtils.clamp(68 - Math.max(0, exhibitDistance - 2.4) * 4.2, 42, 66);
+    const zoomIn = ease(Math.max(0, Math.min(1, (t - travelFrac * 0.70) / 0.17)));
+    const faceShotFov = THREE.MathUtils.lerp(78, faceFov, zoomIn);
+    const desiredFov = THREE.MathUtils.lerp(faceShotFov, exhibitFov, revealBlend);
+    guided.fov = THREE.MathUtils.damp(guided.fov, desiredFov, 3.6, dt);
   }
 
   const fp = { blend: 1, fromPos: new THREE.Vector3(), fromQuat: new THREE.Quaternion(), fromFov: 26, bob: 0 };
@@ -965,14 +1016,14 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
       const k = ease(fp.blend);
       camera.position.lerpVectors(fp.fromPos, fpPos, k);
       camera.quaternion.slerpQuaternions(fp.fromQuat, fpQuat, k);
-      camera.fov = THREE.MathUtils.lerp(fp.fromFov, fpFov(), k);
+      camera.fov = THREE.MathUtils.lerp(fp.fromFov, guided.active ? guided.fov : fpFov(), k);
       camera.updateProjectionMatrix();
     } else {
       camera.position.copy(fpPos);
       camera.quaternion.copy(fpQuat);
       // Critical fix: starting in first person used to leave the camera at
       // the 26-degree overview lens, giving an unusable ultra-zoomed view.
-      const immersiveFov = fpFov();
+      const immersiveFov = guided.active ? guided.fov : fpFov();
       if (Math.abs(camera.fov - immersiveFov) > 0.01) {
         camera.fov = immersiveFov;
         camera.updateProjectionMatrix();
