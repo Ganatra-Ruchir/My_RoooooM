@@ -611,6 +611,62 @@ export function createUI({ room = null }) {
   });
   let drafting = articles[0].title;
 
+  // Dialogue subtitles and a small deterministic top-down radar, both entirely local.
+  const npcCaption = $('#npcSubtitle');
+  let npcUntil = 0;
+  function showNpcLine(index, text) {
+    if (!npcCaption || !text || !room) return;
+    npcCaption.textContent = text;
+    npcCaption.hidden = false;
+    npcUntil = performance.now() + (text.includes('Come say hi') ? 3200 : 5600);
+  }
+  function updateNpcCaption() {
+    if (npcCaption && !npcCaption.hidden && performance.now() > npcUntil) npcCaption.hidden = true;
+  }
+  const minimap = $('#roomMiniMap');
+  const mapCtx = minimap?.getContext('2d');
+  let lastMap = -1000;
+  function updateMiniMap() {
+    if (!room || !mapCtx || !minimap || document.body.classList.contains('at-play')) return;
+    const now = performance.now();
+    if (now - lastMap < 120) return;
+    lastMap = now;
+    const ctx = mapCtx, w = minimap.width, h = minimap.height;
+    const px = (x) => 16 + (x + 5) * (w - 32) / 10;
+    const pz = (z) => 16 + (z + 5) * (h - 32) / 10;
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = '#111c24'; ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = 'rgba(221,233,225,.09)'; ctx.lineWidth = 1;
+    for (let i = -4; i <= 4; i += 2) {
+      ctx.beginPath(); ctx.moveTo(px(i), pz(-5)); ctx.lineTo(px(i), pz(5)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(px(-5), pz(i)); ctx.lineTo(px(5), pz(i)); ctx.stroke();
+    }
+    ctx.strokeStyle = '#d5a77c'; ctx.lineWidth = 1.5;
+    ctx.strokeRect(px(-5), pz(-5), px(5) - px(-5), pz(5) - pz(-5));
+    function furniture(x0, z0, x1, z1) {
+      ctx.fillStyle = 'rgba(169,140,116,.36)';
+      ctx.fillRect(px(x0), pz(z0), px(x1) - px(x0), pz(z1) - pz(z0));
+    }
+    furniture(-2.3, -3.4, .7, -.95); furniture(1.25, -5, 4.75, -4.22);
+    furniture(-5, 1.55, -4.25, 3.15);
+    const other = room.npcPositions?.() || [];
+    other.forEach((n, i) => {
+      ctx.fillStyle = i ? '#8bd0e7' : '#eab889';
+      ctx.beginPath(); ctx.arc(px(n.x), pz(n.z), 4.1, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = 'rgba(250,250,250,.7)'; ctx.lineWidth = 1; ctx.stroke();
+    });
+    const me = room.playerPos;
+    ctx.save();
+    ctx.translate(px(me.x), pz(me.z)); ctx.rotate(-room.playerYaw);
+    ctx.shadowColor = '#f2fcff'; ctx.shadowBlur = 8;
+    ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#12191d'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0, -10); ctx.lineTo(6.8, 7.5); ctx.lineTo(0, 4.1);
+    ctx.lineTo(-6.8, 7.5); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
+    ctx.fillStyle = '#d8e9e0'; ctx.font = 'bold 8px Inter, sans-serif';
+    ctx.fillText('N', w - 19, 11);
+  }
+
+
   // ---------- Text version ----------
   list.innerHTML = listView(!!room);
   function toggleList(show) {
@@ -764,6 +820,11 @@ export function createUI({ room = null }) {
 
   // Called when something in the 3D room is clicked.
   function handleSelect(kind, index) {
+    if (kind === 'npc') {
+      const response = room?.act('npc', index);
+      if (response) showNpcLine(index, response.name + ' · ' + response.role + ': ' + response.text);
+      return;
+    }
     if (kind === 'talk') { hidePop(); close(); chat.open(); return; }
     if (DRAWER_KIND[kind]) { hidePop(); return open(DRAWER_KIND[kind], index); }
     if (kind === 'window') {
@@ -788,9 +849,10 @@ export function createUI({ room = null }) {
     open, close, setNight, toggleList, setWriting, handleSelect, hidePop,
     toggleMap, toggleFullscreen, toggleHelp, hideHelpSoon, setPrompt, onMode,
     showStart: () => showPlay('start'),
+    showNpcLine,
     get playing() { return playing && play.hidden; },
     blocksGameKeys: () => drawer.classList.contains('open') || !list.hidden || chat.isOpen || !play.hidden,
-    updateMarkers() { updateMarkers(); updatePop(); updatePrompt(); },
+    updateMarkers() { updateMarkers(); updatePop(); updatePrompt(); updateNpcCaption(); updateMiniMap(); },
     onHover: showTooltip,
     get isNight() { return night; },
   };
