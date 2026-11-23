@@ -50,27 +50,41 @@
 
   <!-- Automatic first-person guided tour: visual captions are always available.
        Browser policy requires a user click before voice audio/fullscreen can start. -->
-  <section class="guided-tour-panel" id="guidedTour" aria-label="Dev's guided room tour" hidden>
+  <section class="guided-tour-panel" id="guidedTour" aria-label="Mira's guided room tour" hidden>
+    <div class="guide-cinematic-image">
+      <img src="assets/guide-reference.webp" alt="Original cinematic character reference: brunette woman seated on a pale sofa" loading="eager">
+      <span class="guide-image-label">MIRA <i>·</i> ROOM GUIDE</span>
+    </div>
     <div class="guided-tour-head">
       <span class="guided-tour-dot" aria-hidden="true"></span>
-      <strong>DEV · YOUR ROOM GUIDE</strong>
+      <strong>MIRA · YOUR ROOM GUIDE</strong>
       <span class="guided-tour-count" id="tourCount">01 / 11</span>
     </div>
+    <span class="guided-tour-category" id="tourCategory">WELCOME</span>
     <p id="tourStopTitle">Welcome to Ruchir's room</p>
+    <div class="guided-tour-tags" id="tourTags" aria-label="Featured information"></div>
+    <div class="tour-focus-photo" id="tourFocus" hidden>
+      <img id="tourFocusImage" src="assets/ruchir-ganatra.png" alt="Ruchir Ganatra">
+    </div>
     <div class="guided-tour-progress" role="progressbar" aria-label="Guided tour progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="tourProgress">
       <span id="tourBar"></span>
     </div>
     <div class="guided-tour-meta">
       <span id="tourControlsLocked">Tour in progress · movement locked</span>
-      <button type="button" id="tourVoice" aria-label="Enable spoken tour narration">Enable voice</button>
+      <button type="button" id="tourVoice" aria-label="Enable spoken guide narration"> <span aria-hidden="true">◉</span> Hear Mira</button>
     </div>
   </section>
   <section class="tour-finished" id="tourFinished" aria-label="Free exploration unlocked" hidden>
     <div>
       <strong>YOUR TURN. EXPLORE FREELY.</strong>
-      <span>WASD move · Drag to look · E interact</span>
+      <span>WASD to move · Move mouse to look · E to interact</span>
+      <label class="mouse-setting" for="mouseSensitivity">Mouse speed
+        <input type="range" id="mouseSensitivity" data-look-sensitivity min="0.35" max="2.5" step="0.05" value="1" aria-label="Mouse sensitivity">
+        <output id="mouseSensitivityValue">1.0×</output>
+      </label>
+      <label class="mouse-invert"><input type="checkbox" id="invertMouse"> Invert vertical look</label>
     </div>
-    <button type="button" id="tourExploreBtn">Enter fullscreen</button>
+    <button type="button" id="tourExploreBtn">▶ Start Exploring</button>
   </section>
   <button class="prompt" id="prompt" type="button" hidden><kbd>E</kbd><span id="promptText"></span></button>
 
@@ -86,6 +100,7 @@
       <p class="play-sub" id="playSub">Walk in, look around and come say hi. Everything in this room is part of my work.</p>
       <button class="btn primary play-btn" id="playBtn" type="button">▶ Click to play</button>
       <ul class="help-keys play-keys" id="playKeys"></ul>
+      <p class="mouse-tip">Mouse = camera · WASD = move · Shift = sprint · E = interact</p>
       <button class="ghost-btn play-text" id="playText" type="button">Prefer reading? Open the text version</button>
     </div>
   </div>
