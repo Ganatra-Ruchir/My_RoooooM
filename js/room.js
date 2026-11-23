@@ -78,6 +78,34 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
 
   // ---------- Helpers ----------
   const std = (color, o = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.85, ...o });
+  // Tiny repeatable micro-grain gives close-up walls and upholstery a non-plastic
+  // surface response. Generated locally; no stock image or unstable network dependency.
+  function microGrain(kind, repeatX = 4, repeatY = 4) {
+    const size = 256, c = document.createElement('canvas');
+    c.width = c.height = size;
+    const g = c.getContext('2d', { willReadFrequently: true });
+    if (!g) return null;
+    const img = g.createImageData(size, size);
+    let seed = kind === 'fabric' ? 97109 : 60817;
+    const rand = () => { seed = (1664525 * seed + 1013904223) >>> 0; return seed / 4294967296; };
+    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+      const i = (y * size + x) * 4;
+      const n = (rand() - 0.5) * (kind === 'fabric' ? 44 : 22);
+      const weave = kind === 'fabric' ? ((x % 4 === 0 ? -9 : 1) + (y % 5 === 0 ? -8 : 2)) : 0;
+      const base = 239 + n + weave;
+      img.data[i] = img.data[i+1] = img.data[i+2] = Math.max(0, Math.min(255, base));
+      img.data[i+3] = 255;
+    }
+    g.putImageData(img, 0, 0);
+    const texture = new THREE.CanvasTexture(c);
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(repeatX, repeatY);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.anisotropy = 8;
+    return texture;
+  }
+  const plasterGrain = microGrain('plaster', 6, 4);
+  const fabricGrain = microGrain('fabric', 4, 3);
   function mesh(geo, mat, x = 0, y = 0, z = 0, parent = scene, { cast = true, receive = true } = {}) {
     const m = new THREE.Mesh(geo, mat);
     m.position.set(x, y, z);
@@ -123,9 +151,9 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
 
   // ---------- Room shell ----------
   const T = 0.3;
-  const cream = std(0xe9dcc8, { roughness: 0.95 });
-  const green = std(0x2f4a43, { roughness: 0.95 });
-  const cut = std(0xd9cbb6, { roughness: 1 });
+  const cream = std(0xb6c2cf, { roughness: 0.97, map: plasterGrain });
+  const green = std(0x344452, { roughness: 0.95, map: plasterGrain });
+  const cut = std(0x9ba9b7, { roughness: 0.97, map: plasterGrain });
   const floorTex = TX.floorTexture();
   const floorEdge = std(0x6e4c36);
   const floorMat = std(0xffffff, { map: floorTex, roughness: 0.62 });
@@ -146,9 +174,9 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
   mesh(box(T, 6, 10 + T), [green, cut, cut, cut, cut, cut], -5 - T / 2, 3, -T / 2, scene, { cast: false });
 
   // wainscoting, rails and baseboards
-  const sage = std(0x8fa38b, { roughness: 0.9 });
-  const deepGreen = std(0x243a34, { roughness: 0.9 });
-  const trim = std(0xf2eadc, { roughness: 0.6 });
+  const sage = std(0x899ba2, { roughness: 0.94, map: plasterGrain });
+  const deepGreen = std(0x293744, { roughness: 0.93, map: plasterGrain });
+  const trim = std(0xe4e0d9, { roughness: 0.62 });
   mesh(box(10, 1.4, 0.03), sage, 0, 0.7, -4.985, scene, { cast: false });
   mesh(box(0.03, 1.4, 10), deepGreen, -4.985, 0.7, 0, scene, { cast: false });
   for (let i = 0; i < 16; i++) {
@@ -595,9 +623,12 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
   // ---------- Decor ----------
   const rug = mesh(new THREE.CircleGeometry(2.2, 64), new THREE.MeshStandardMaterial({ map: TX.rugTexture(), roughness: 1 }), 1.5, 0.012, 1.6, scene, { cast: false });
   rug.rotation.x = -Math.PI / 2;
-  const bean = mesh(new THREE.SphereGeometry(0.72, 32, 20), std(0xd6a03f, { roughness: 1 }), 2.7, 0.4, 2.4);
+  const loungeFabric = new THREE.MeshPhysicalMaterial({
+    color: 0xc1c5c0, roughness: 0.95, sheen: 0.48, sheenRoughness: 0.89, map: fabricGrain,
+  });
+  const bean = mesh(new THREE.SphereGeometry(0.72, 48, 32), loungeFabric, 2.7, 0.4, 2.4);
   bean.scale.set(1, 0.6, 1);
-  mesh(new THREE.SphereGeometry(0.4, 20, 14), std(0xd6a03f, { roughness: 1 }), 2.45, 0.68, 2.15).scale.set(1, 0.55, 1);
+  mesh(new THREE.SphereGeometry(0.4, 32, 24), loungeFabric, 2.45, 0.68, 2.15).scale.set(1, 0.55, 1);
   // low coffee table on the rug with a stack of webtoon comics and a sketch pad
   const tableG = new THREE.Group(); tableG.position.set(0.7, 0, 1.0); tableG.rotation.y = 0.25; scene.add(tableG);
   mesh(new THREE.CylinderGeometry(0.62, 0.62, 0.07, 36), oak, 0, 0.5, 0, tableG);
@@ -654,9 +685,9 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
   let lampOn = 1, lampAmt = 1;
 
   // ---------- Lights ----------
-  const hemi = new THREE.HemisphereLight(0xfff3e0, 0x6b5242, 1.5);
+  const hemi = new THREE.HemisphereLight(0xdde8f6, 0x57636f, 1.13);
   scene.add(hemi);
-  const sun = new THREE.DirectionalLight(0xfff0d8, 2.6);
+  const sun = new THREE.DirectionalLight(0xe6efff, 2.2);
   sun.position.set(7, 13, 9);
   sun.target.position.set(0, 0, -1);
   sun.castShadow = true;
@@ -686,7 +717,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
   }));
   dust.raycast = () => {}; scene.add(dust);
 
-  const DAY = { hemi: 1.5, hemiSky: new THREE.Color(0xfff3e0), hemiGround: new THREE.Color(0x6b5242), sun: 2.6, sunCol: new THREE.Color(0xfff0d8), fill: 0.5, lamp: 1.2, neon: 0.6, screen: 0.4, bulb: 0.4, gallery: 0, exposure: 1.05, pic: 1 };
+  const DAY = { hemi: 1.13, hemiSky: new THREE.Color(0xdde8f6), hemiGround: new THREE.Color(0x57636f), sun: 2.2, sunCol: new THREE.Color(0xe6efff), fill: 0.75, lamp: 1.05, neon: 0.34, screen: 0.32, bulb: 0.28, gallery: 0, exposure: 1.04, pic: 1 };
   const NIGHT = { hemi: 0.45, hemiSky: new THREE.Color(0x6a74b8), hemiGround: new THREE.Color(0x2a2030), sun: 0.55, sunCol: new THREE.Color(0x9fb4ff), fill: 0.12, lamp: 9, neon: 4, screen: 2.2, bulb: 3, gallery: 2.5, exposure: 1.1, pic: 0.92 };
   let nightTarget = 0, night = 0;
   function applyNight(n) {
