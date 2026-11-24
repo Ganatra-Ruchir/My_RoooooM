@@ -331,9 +331,11 @@ export function createNPCSystem({ scene, onGreet = () => {}, reducedMotion = fal
       const a = agents[index];
       if (!a || !model) return;
       a.body.visible = false;
+      a.root.visible=true;model.visible=true;
       a.root.add(model);
       model.position.set(0, 0, 0);
       model.rotation.set(0, 0, 0);
+      a.root.updateWorldMatrix(true,true);
     },
     getState(index) { return agents[index]?.state || null; },
     anchors() { return agents.map(a => a.root.position.clone().setY(2.9)); },

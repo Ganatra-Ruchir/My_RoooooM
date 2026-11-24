@@ -93,6 +93,7 @@ export async function loadMeeraVRM({ x, z, scale = 1.52, onProgress, localFile =
   vrm.scene.traverse(o => {
     if (!o.isMesh) return;
     o.frustumCulled = false; // skirts, hair and dynamic body need stable bounds
+    o.visible=true; // keep original materials and geometry; do not substitute a different model
     o.castShadow = true; o.receiveShadow = true;
     // Keep original mesh raycasting so direct interaction still works.
   });

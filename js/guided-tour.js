@@ -15,7 +15,7 @@ export function guidedTourPlan({ profile, projects, workbench, certificates, art
   const steps = [
     {
       id: 'welcome', title: 'Welcome to Ruchir’s Room', category: 'WELCOME',
-      pos: [3.9, 2.95], look: [3.6, 2.63, 1.35], guide: [1.19, 2.25],
+      pos: [3.65, 0.85], look: [1.75, 2.55, -0.10], guide: [1.75, -0.10],
       tags: ['First-person experience', 'Meet the creator'],
       speakerSay: "Hey, welcome in! I'm Meera, and I'll show you around Ruchir's room.",
       exhibitSay: '',

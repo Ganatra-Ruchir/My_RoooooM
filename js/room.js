@@ -1069,6 +1069,17 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     camera.updateProjectionMatrix();
     const start = tourPlan[0];
     npcSystem.setTourGuide(0, start.guide[0], start.guide[1], true);
+    // Establish the opening composition before the first rendered frame.
+    // Do not pan from an arbitrary desktop overview or previous camera yaw.
+    player.pos.set(start.pos[0],0,start.pos[1]);collide(player.pos);
+    guided.from.set(player.pos.x,player.pos.z);guided.last.copy(guided.from);
+    const a=npcSystem.anchors()[0];
+    const dx=a.x-player.pos.x,dz=a.z-player.pos.z;
+    cam.yaw=Math.atan2(-dx,-dz);
+    cam.pitch=Math.atan2(2.48-EYE,Math.max(.5,Math.hypot(dx,dz)));
+    camera.position.set(player.pos.x,EYE,player.pos.z);
+    camera.quaternion.setFromEuler(new THREE.Euler(cam.pitch,cam.yaw,0,'YXZ'));
+    camera.updateMatrixWorld(true);
     return true;
   }
   function finishGuidedTour() {
@@ -1110,12 +1121,12 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     const anchor = npcSystem.anchors()[0];
     guided.face.set(anchor.x, 2.85, anchor.z);
     if (rig) {
-      rig.headWorld(guided.face);
-      // Safe bounds for head bones across GLB rigs and initial animation poses.
-      if (!Number.isFinite(guided.face.y) ||
-          guided.face.y < 1.25 || guided.face.y > 4.8) {
-        guided.face.set(anchor.x, 2.85, anchor.z);
-      }
+      const head=rig.headWorld(headTmp);
+      // Root position is authoritative; raw head transforms may briefly lag
+      // a reparented/spring-bone rig. Do not aim across the room at a stale joint.
+      guided.face.set(anchor.x,Number.isFinite(head.y)&&head.y>1.25&&head.y<4.8?head.y:2.64,anchor.z);
+      if(Number.isFinite(head.x)&&Number.isFinite(head.z)&&Math.hypot(head.x-anchor.x,head.z-anchor.z)<.55){guided.face.x=head.x;guided.face.z=head.z;}
+      rig.root.visible=true;
     }
     // Frame head AND shoulders; don't move the camera inside the head mesh.
     guided.face.y -= 0.13;
@@ -1159,7 +1170,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     // not a giant distorted face covering the whole screen.
     const portrait = camera.aspect < .8;
     const faceFov = THREE.MathUtils.clamp(
-      THREE.MathUtils.radToDeg(2 * Math.atan((portrait?2.7:1.9) / (2 * faceDistance))), portrait?68:40, portrait?100:68);
+      THREE.MathUtils.radToDeg(2 * Math.atan((portrait?2.7:2.45) / (2 * faceDistance))), portrait?68:51, portrait?100:76);
     const exhibitDistance = Math.max(.65,Math.hypot(target.x - player.pos.x, target.z - player.pos.z));
     const width = ({certificates:5.4,projects:2.9,workbench:3.5,tools:3.6,contact:2.7,about:2.1,articles:2.8,interactive:2.5})[stop.id]||2.4;
     const fitFov=THREE.MathUtils.radToDeg(2*Math.atan(width/(2*exhibitDistance*Math.max(.4,camera.aspect))));
@@ -1833,7 +1844,21 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     get catReady(){return extras.catReady;},
     pickupCat(){if(coffeeHeld||heldBook)return false;return extras.act('cat','pickup');},
     putCatDown(){return extras.act('cat','putdown');},
-    get materialDiagnostics(){return {models:Object.fromEntries(propStatus),maps:Object.fromEntries(materialStatus),pixelRatio:renderer.getPixelRatio(),width:renderer.domElement.width,height:renderer.domElement.height,fps:measuredFps,drawCalls:renderer.info.render.calls,triangles:renderer.info.render.triangles,guide:guideState};},
+    get materialDiagnostics(){
+      const rig=realCharacters.get('maya'),head=new THREE.Vector3();let meshes=0,visibleMeshes=0,guideInFrame=false,guidePosition=null;
+      if(rig){
+        camera.updateMatrixWorld(true);rig.root.updateWorldMatrix(true,true);
+        rig.root.traverse(o=>{if(o.isMesh&&!o.userData.interactionProxy){meshes++;if(shown(o))visibleMeshes++;}});
+        rig.headWorld(head);guidePosition=head.toArray().map(x=>Number(x.toFixed(2)));head.project(camera);
+        guideInFrame=Number.isFinite(head.x)&&Math.abs(head.x)<=1&&Math.abs(head.y)<=1&&head.z>=-1&&head.z<=1;
+      }
+      return {models:Object.fromEntries(propStatus),maps:Object.fromEntries(materialStatus),pixelRatio:renderer.getPixelRatio(),width:renderer.domElement.width,height:renderer.domElement.height,fps:measuredFps,drawCalls:renderer.info.render.calls,triangles:renderer.info.render.triangles,guide:guideState,guideError,guideInFrame,guideMeshes:meshes,guideVisibleMeshes:visibleMeshes,guidePosition};
+    },
+    lookAtGuide(){
+      const rig=realCharacters.get('maya');if(!rig)return false;
+      if(guided.active)finishGuidedTour();
+      const a=npcSystem.anchors()[0];lookToward(new THREE.Vector3(a.x,2.48,a.z));return true;
+    },
     setGraphicsQuality(next){
       quality=next==='balanced'?'balanced':'sharp';
       renderScale=quality==='sharp'?sharpRatio:Math.min(nativeRatio,1.25);

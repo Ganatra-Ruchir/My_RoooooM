@@ -627,9 +627,13 @@ export function createUI({ room = null }) {
   function showMaterialInfo(){
     if(!qualityInfo||!room)return;
     const d=room.materialDiagnostics,models=Object.values(d.models),maps=Object.values(d.maps);
+    const guideInfo=$('#guideStatus');
+    if(guideInfo)guideInfo.textContent='Meera: '+d.guide+(d.guide==='ready'?' · '+d.guideVisibleMeshes+'/'+d.guideMeshes+' meshes visible · '+(d.guideInFrame?'in view':'outside view'):d.guideError?' · '+d.guideError:'');
     qualityInfo.textContent='Render '+d.width+' × '+d.height+' px · '+(d.fps||'—')+' FPS · '+d.drawCalls+' draw calls · Models '+models.filter(x=>x==='ready').length+'/'+models.length+' · Texture maps '+maps.filter(x=>x==='ready').length+'/'+maps.length+' loaded'+(models.includes('fallback')||maps.includes('fallback')?' · Some assets using fallback':'');
   }
   $('#helpBtn').addEventListener('click',showMaterialInfo);
+  const locate=document.createElement('button');locate.type='button';locate.className='ghost-btn';locate.textContent='Look at Meera';
+  $('#guideStatus').after(locate);locate.addEventListener('click',()=>{if(room?.lookAtGuide()){toggleHelp(false);}else showMaterialInfo();});
   qualitySelect?.addEventListener('change',showMaterialInfo);
   let helpTimer = 0;
   function toggleHelp(show = help.hidden) { help.hidden = !show; clearTimeout(helpTimer); }
