@@ -169,6 +169,12 @@
     <div class="drawer-body" id="drawerBody" tabindex="-1"></div>
   </aside>
 
+  <button type="button" id="standUp" hidden>Stand up</button>
+  <dialog id="roomBook" aria-label="Portfolio book">
+    <header class="book-toolbar"><span>Reading room</span><button type="button" id="bookClose" aria-label="Close book">✕</button></header>
+    <div id="bookPages" class="book-spread"></div>
+    <footer class="book-toolbar"><button type="button" id="bookPrev">← Previous</button><span id="bookPageNumber">1 / 2</span><button type="button" id="bookNext">Next →</button></footer>
+  </dialog>
   <main class="list" id="list" hidden></main>
 
   <noscript>

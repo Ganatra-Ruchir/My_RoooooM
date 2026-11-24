@@ -97,6 +97,13 @@ export async function loadMeeraVRM({ x, z, scale = 1.52, onProgress, localFile =
   const head = vrm.humanoid.getRawBoneNode('head') ||
     vrm.humanoid.getNormalizedBoneNode('head');
   if(!head) throw new Error('Meera VRM has no head joint');
+  // Match the room's adult head-height convention, not raw VRM authoring units.
+  if(id==='maya'){
+    root.updateWorldMatrix(true,true);
+    const headY=head.getWorldPosition(new THREE.Vector3()).y-root.position.y;
+    if(Number.isFinite(headY)&&headY>.5)vrm.scene.scale.multiplyScalar(THREE.MathUtils.clamp(2.64/headY,.8,1.65));
+    root.updateWorldMatrix(true,true);
+  }
   const expressions = vrm.expressionManager;
   const keys = new Set(expressions?.expressions?.map(x => x.expressionName) || []);
   const voiceKeys = ['aa','ih','ou','ee','oh']; // VRM0 A/I/U/E/O -> normalized VRM names

@@ -22,6 +22,27 @@ export async function loadPhotographicProp(id,height,maxWidth=Infinity,maxDepth=
     const scale=Math.min(height/size.y,maxWidth/Math.max(size.x,.001),maxDepth/Math.max(size.z,.001)),center=bounds.getCenter(new THREE.Vector3());
     const root=new THREE.Group();model.scale.multiplyScalar(scale);
     model.position.x-=center.x*scale;model.position.y-=bounds.min.y*scale;model.position.z-=center.z*scale;
+    // A successful geometry load is not proof that its diffuse image decoded.
+    if(id.startsWith('potted_plant')){
+      let colored=false;
+      model.traverse(o=>{
+        if(!o.isMesh)return;
+        for(const mat of Array.isArray(o.material)?o.material:[o.material]){
+          if(mat.color&&mat.color.g>mat.color.r*1.18&&mat.color.g>mat.color.b*1.18)colored=true;
+          const img=mat.map?.image;
+          if(!img)continue;
+          try{
+            const c=document.createElement('canvas');c.width=c.height=48;
+            const ctx=c.getContext('2d',{willReadFrequently:true});ctx.drawImage(img,0,0,48,48);
+            const px=ctx.getImageData(0,0,48,48).data;
+            let green=0,opaque=0;
+            for(let i=0;i<px.length;i+=4){if(px[i+3]<128)continue;opaque++;if(px[i+1]>px[i]*1.12&&px[i+1]>px[i+2]*1.16&&px[i+1]>24)green++;}
+            if(green>Math.max(20,opaque*.025))colored=true;
+          }catch{ /* Cannot verify decoded texture, keep colored local model. */ }
+        }
+      });
+      if(!colored)throw new Error('Botanical base color absent or unverified');
+    }
     model.traverse(o=>{if(!o.isMesh)return;o.castShadow=true;o.receiveShadow=true;
       for(const m of Array.isArray(o.material)?o.material:[o.material]){
         if(m.isMeshStandardMaterial)m.envMapIntensity=.3;

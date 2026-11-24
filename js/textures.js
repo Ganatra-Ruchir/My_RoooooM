@@ -525,3 +525,51 @@ let brushedMap,keyboardMap,contactMap;
 export function brushedMetalTexture(){if(brushedMap)return brushedMap;const [c,x]=canvas(512,512),r=rng(812);const a=x.createImageData(512,512);for(let y=0;y<512;y++){const line=r()*22;for(let i=0;i<512;i++){const k=(y*512+i)*4,v=186+line+r()*14;a.data[k]=v;a.data[k+1]=v;a.data[k+2]=v;a.data[k+3]=255;}}x.putImageData(a,0,0);return brushedMap=toTexture(c);}
 export function keyboardTexture(){if(keyboardMap)return keyboardMap;const [c,x]=canvas(1024,384);x.fillStyle='#151515';x.fillRect(0,0,1024,384);const rows=['1234567890-=','QWERTYUIOP[]','ASDFGHJKL;','ZXCVBNM,./'];x.font='20px sans-serif';for(let y=0;y<rows.length;y++){const row=rows[y],w=900/row.length;for(let i=0;i<row.length;i++){const a=60+i*w,b=20+y*70;x.fillStyle='#383735';x.fillRect(a,b,w-6,60);x.fillStyle='#c8c5bd';x.fillText(row[i],a+9,b+24);}}x.fillStyle='#383735';x.fillRect(300,306,420,56);return keyboardMap=toTexture(c);}
 export function contactShadowTexture(){if(contactMap)return contactMap;const [c,x]=canvas(128,128),g=x.createRadialGradient(64,64,6,64,64,64);g.addColorStop(0,'rgba(0,0,0,.9)');g.addColorStop(.48,'rgba(0,0,0,.46)');g.addColorStop(1,'rgba(0,0,0,0)');x.fillStyle=g;x.fillRect(0,0,128,128);return contactMap=toTexture(c);}
+
+/** Layered forest valley with animated dragon silhouettes, rendered at window resolution. */
+export function createForestVista(){
+  const [c,x]=canvas(1024,768),[day,dx]=canvas(1024,768),[night,nx]=canvas(1024,768);
+  const tex=toTexture(c,{aniso:8});let darkness=1,last=-1,prevDark=-1;
+  function landscape(ctx,dark){
+    const r=rng(772),w=1024,h=768;
+    const sky=ctx.createLinearGradient(0,0,0,h);sky.addColorStop(0,dark?'#1e2d40':'#83a4b4');sky.addColorStop(.53,dark?'#71828d':'#d1d6c7');sky.addColorStop(1,dark?'#344841':'#879a80');ctx.fillStyle=sky;ctx.fillRect(0,0,w,h);
+    for(let i=0;i<3;i++){const g=ctx.createRadialGradient(720,150+i*24,0,720,150+i*24,200);g.addColorStop(0,dark?'#d6d5b82a':'#fff1c855');g.addColorStop(1,'#ffffff00');ctx.fillStyle=g;ctx.fillRect(0,0,w,h);}
+    const colors=dark?['#53656a','#3b5254','#253e3d','#172d29','#10241e']:['#a4b6ad','#829b93','#5b7f70','#3d6250','#244838'];
+    for(let layer=0;layer<5;layer++){
+      const base=355+layer*75,amp=28+layer*11;
+      ctx.fillStyle=colors[layer];ctx.beginPath();ctx.moveTo(0,h);
+      for(let i=0;i<=w;i+=8)ctx.lineTo(i,base+Math.sin(i*.008+layer)*amp+Math.sin(i*.021+layer)*amp*.35);
+      ctx.lineTo(w,h);ctx.closePath();ctx.fill();
+      const count=layer<2?120:85;
+      for(let k=0;k<count;k++){
+        const px=r()*w,py=base+Math.sin(px*.008+layer)*amp+Math.sin(px*.021+layer)*amp*.35+22+r()*100;
+        const ht=(15+layer*17)*(0.5+r()*.9),wide=ht*(.18+r()*.09);
+        ctx.fillStyle=colors[layer];ctx.fillRect(px-1,py-ht,2,ht);
+        for(let j=0;j<5;j++){const yy=py-ht+j*ht*.17,ww=wide*(.35+j*.19);ctx.beginPath();ctx.moveTo(px,yy-ht*.17);ctx.lineTo(px-ww,yy+ht*.25);ctx.lineTo(px+ww,yy+ht*.25);ctx.closePath();ctx.fill();}
+      }
+    }
+    // Subtle individual needles and foliage highlights in foreground.
+    for(let k=0;k<2400;k++){const px=r()*w,py=520+r()*248;ctx.fillStyle=dark?'rgba(95,129,102,.13)':'rgba(153,184,111,.17)';ctx.fillRect(px,py,1+r()*3,1+r()*2);}
+  }
+  landscape(dx,false);landscape(nx,true);
+  function dragon(cx,cy,size,flap,flip){
+    x.save();x.translate(cx,cy);x.scale(size*flip,size);x.fillStyle='#142027';x.strokeStyle='#142027';x.lineWidth=1.4;
+    // long tapered tail, body, neck and horned head.
+    x.beginPath();x.moveTo(-6,0);x.bezierCurveTo(-24,4,-35,14,-54,5);x.bezierCurveTo(-39,8,-25,-2,-6,-3);x.closePath();x.fill();
+    x.beginPath();x.ellipse(0,0,13,4,0,0,Math.PI*2);x.fill();
+    x.beginPath();x.moveTo(6,-1);x.quadraticCurveTo(17,-14,25,-10);x.lineTo(30,-7);x.lineTo(25,-4);x.lineTo(21,-5);x.quadraticCurveTo(15,-6,11,3);x.closePath();x.fill();
+    x.beginPath();x.moveTo(22,-10);x.lineTo(20,-15);x.lineTo(26,-10);x.fill();
+    for(const side of [-1,1]){
+      const lift=(10+flap*20)*side;
+      x.beginPath();x.moveTo(-3,-1);x.quadraticCurveTo(-10,lift*.72,-5,lift);x.lineTo(11,lift*.64);x.quadraticCurveTo(2,lift*.49,4,lift*.28);x.quadraticCurveTo(-9,lift*.40,-11,lift*.13);x.lineTo(-14,1);x.closePath();x.fill();
+    }
+    x.restore();
+  }
+  function update(time){
+    if(time-last<.075&&Math.abs(darkness-prevDark)<.03)return;last=time;prevDark=darkness;
+    x.globalAlpha=1;x.drawImage(day,0,0);x.globalAlpha=darkness;x.drawImage(night,0,0);x.globalAlpha=1;
+    for(let i=0;i<3;i++){const phase=(time*(14+i*3)+i*390)%1300;dragon(phase-120,150+i*62+Math.sin(time*.7+i)*18,.8+i*.24,Math.sin(time*3.4+i),1);}
+    tex.needsUpdate=true;
+  }
+  update(0);return {texture:tex,setNight(n){darkness=n;},update};
+}

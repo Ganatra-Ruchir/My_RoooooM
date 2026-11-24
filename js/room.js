@@ -318,10 +318,12 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   // ---------- Window with day / night sky ----------
   const winCx = (W_IN.x0 + W_IN.x1) / 2, winCy = (W_IN.y0 + W_IN.y1) / 2;
   const winW = W_IN.x1 - W_IN.x0, winH = W_IN.y1 - W_IN.y0;
-  const skyDay = new THREE.MeshBasicMaterial({ map: TX.gardenTexture(false), toneMapped: false });
-  const skyNight = new THREE.MeshBasicMaterial({ map: TX.gardenTexture(true), toneMapped: false, transparent: true, opacity: 0 });
+  const vista=TX.createForestVista();
+  const skyDay = new THREE.MeshBasicMaterial({ map: vista.texture, toneMapped: false });
+  const skyNight = new THREE.MeshBasicMaterial({ color:0xffffff, transparent:true,opacity:0 });
+  // Animated panorama updates in place; no second transparent plane or blur.
   mesh(new THREE.PlaneGeometry(winW + 1.4, winH + 1.2), skyDay, winCx, winCy, -5.9, scene, { cast: false, receive: false });
-  mesh(new THREE.PlaneGeometry(winW + 1.4, winH + 1.2), skyNight, winCx, winCy, -5.89, scene, { cast: false, receive: false });
+  // Window glass and mullions remain real 3D geometry in front of the vista.
   const frameMat = std(0x292826, { roughness: 0.5 });
   mesh(box(winW + 0.24, 0.12, 0.12), frameMat, winCx, W_IN.y1 + 0.06, -4.97);
   mesh(box(winW + 0.4, 0.08, 0.36), frameMat, winCx, W_IN.y0 - 0.02, -4.88);
@@ -760,6 +762,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   }
   const pillow=mesh(rbox(.46,.42,.18,.08),std(0x49372d,{map:fabricGrain,roughness:.94}),.12,.89,-.23,chair); pillow.rotation.z=-.12;
   const chairFallback=[...chair.children];
+  register(chair,{kind:'seat',index:0,label:'Sit in the reading chair'},{dir:new THREE.Vector3(),selectOffset:0,hoverOffset:0});
   loadPhotographicProp('ArmChair_01',1.50,1.32,1.32).then(model=>{
     if(!model)return;
     chairFallback.forEach(o=>o.visible=false);chair.add(model);
@@ -777,8 +780,12 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     comic.rotation.y = (k - 1.5) * 0.12;
   });
   const cupG = new THREE.Group(); cupG.position.set(0.25, 0.535, -0.15); tableG.add(cupG);
-  mesh(new THREE.CylinderGeometry(0.07, 0.06, 0.15, 16), std(0xf2eadc, { roughness: 0.4 }), 0, 0.075, 0, cupG);
-  mesh(new THREE.CircleGeometry(0.06, 16), std(0x3b2416, { roughness: 0.2 }), 0, 0.14, 0, cupG).rotation.x = -Math.PI / 2;
+  const cupMat=std(0xb1a08b,{map:TX.ceramicTexture(),roughness:.32,envMapIntensity:.43});
+  mesh(new THREE.LatheGeometry(mugProfile.map(q=>new THREE.Vector2(q.x*.85,q.y*.8)),32),cupMat,0,0,0,cupG);
+  mesh(new THREE.CircleGeometry(.061,32),std(0x322017,{roughness:.23}),0,.138,0,cupG).rotation.x=-Math.PI/2;
+  mesh(new THREE.TorusGeometry(.043,.012,8,18,Math.PI),cupMat,.076,.078,0,cupG).rotation.z=-Math.PI/2;
+  register(cupG,{kind:'coffee',index:1,label:'Drink coffee'},{dir:new THREE.Vector3(),selectOffset:0,hoverOffset:0});
+  register(mugG,{kind:'coffee',index:0,label:'Drink coffee'},{dir:new THREE.Vector3(),selectOffset:0,hoverOffset:0});
   // helmet by the beanbag (Ahmedabad, usually via Rapido)
   const helmet = mesh(new THREE.SphereGeometry(0.27, 24, 16, 0, Math.PI * 2, 0, Math.PI / 1.8), std(0xf2b233, { roughness: 0.35 }), 4.45, 0.02, 1.25);
   helmet.rotation.set(-0.25, 0.6, 0.1);
@@ -903,7 +910,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     screenLight.intensity = L(DAY.screen, NIGHT.screen);
     bulbMat.emissiveIntensity = L(DAY.bulb, NIGHT.bulb) * lampAmt;
     bulbMats.forEach((m) => (m.emissiveIntensity = L(DAY.gallery, NIGHT.gallery)));
-    skyNight.opacity = n;
+    vista.setNight(n);
     groundMat.color.copy(GROUND_DAY).lerp(GROUND_NIGHT, n);
     // the ceiling light only matters when you're inside, walking around at night
     const inside = ceiling.visible ? 1 : 0;
@@ -994,7 +1001,8 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   let mode = 'map';
   let homeMode = 'follow';
   let talking = false, movementLocked = false;
-  const EYE = 2.75;
+  const EYE = 2.62;
+  let eyeHeight=EYE,seated=false,seatReturn=null,coffeeTime=0,coffeeHeld=null,coffeeSource=null;
   const cam = { yaw: 0.93, pitch: -0.06 };
   let lookSensitivity = 1.0, invertLookY = false;
   function applyMouseLook(dx, dy, touch=false) {
@@ -1174,7 +1182,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   function lookToward(p) {
     const ex = player.pos.x, ez = player.pos.z;
     const dx = p.x - ex, dz = p.z - ez;
-    lookGoal = { yaw: Math.atan2(-dx, -dz), pitch: THREE.MathUtils.clamp(Math.atan2(p.y - EYE, Math.hypot(dx, dz)), -1.0, 0.9) };
+    lookGoal = { yaw: Math.atan2(-dx, -dz), pitch: THREE.MathUtils.clamp(Math.atan2(p.y - eyeHeight, Math.hypot(dx, dz)), -1.0, 0.9) };
   }
   function updateFirstPerson(dt) {
     if (talking) {
@@ -1183,7 +1191,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
       let d = Math.atan2(-dx, -dz) - cam.yaw; d = Math.atan2(Math.sin(d), Math.cos(d));
       cam.yaw += d * Math.min(1, dt * 4);
       ruchirHead(headTmp);
-      const wantPitch = Math.atan2(headTmp.y - 0.35 - EYE, Math.hypot(dx, dz));
+      const wantPitch = Math.atan2(headTmp.y - 0.35 - eyeHeight, Math.hypot(dx, dz));
       cam.pitch += (wantPitch - cam.pitch) * Math.min(1, dt * 4);
     } else if (lookGoal) {
       // smoothly turn your head toward something (opening a section, "Show" in the secrets list)
@@ -1196,7 +1204,8 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     cam.pitch = THREE.MathUtils.clamp(cam.pitch, -1.27, 1.15);
     fp.bob += dt * player.speed * 2.6;
     const bobY = Math.sin(fp.bob * 2) * (lowPower?.008:.022) * Math.min(1, player.speed / 2.6);
-    fpPos.set(player.pos.x, EYE + bobY, player.pos.z);
+    eyeHeight=THREE.MathUtils.damp(eyeHeight,seated?1.52:EYE,6,dt);
+    fpPos.set(player.pos.x, eyeHeight + bobY, player.pos.z);
     fpEuler.set(cam.pitch, cam.yaw, 0);
     fpQuat.setFromEuler(fpEuler);
     if (fp.blend < 1) {
@@ -1371,7 +1380,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     }
     hooks.onEmptyClick?.();
     // click the floor to walk there
-    if (hit && hit.point.y < 0.05 && canWalk()) { player.target = hit.point.clone().setY(0); player.stuck = 0; }
+    if (hit && hit.point.y < 0.05 && canWalk() && !seated) { player.target = hit.point.clone().setY(0); player.stuck = 0; }
   });
   controls.addEventListener('start', () => { tween = null; });
 
@@ -1379,8 +1388,41 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   const input = { x: 0, y: 0, run: false, turn: 0 };
   const before = new THREE.Vector3(), tryPos = new THREE.Vector3();
   function canWalk() { return !talking && !movementLocked && mode !== 'focus'; }
+  function sitDown(){
+    if(seated||!canWalk()||guided.active)return false;
+    seatReturn=player.pos.clone();seated=true;player.target=null;player.vel.set(0,0,0);
+    player.pos.copy(chair.getWorldPosition(new THREE.Vector3())).setY(0);
+    cam.yaw=Math.atan2(player.pos.x-.7,player.pos.z-1);cam.pitch=-.09;lookGoal=null;
+    return true;
+  }
+  function standUp(){
+    if(!seated)return false;
+    seated=false;if(seatReturn)player.pos.copy(seatReturn);
+    collide(player.pos);player.vel.set(0,0,0);return true;
+  }
+  function drinkCoffee(index){
+    if(coffeeHeld||guided.active)return false;
+    coffeeSource=index===1?cupG:mugG;
+    coffeeHeld=coffeeSource.clone(true);
+    coffeeSource.visible=false;scene.add(coffeeHeld);coffeeTime=0;
+    return true;
+  }
+  function updateCoffee(dt){
+    if(!coffeeHeld)return;
+    coffeeTime+=dt;
+    if(coffeeTime>=3.1){scene.remove(coffeeHeld);coffeeHeld=null;coffeeSource.visible=true;coffeeSource=null;return;}
+    const lift=Math.sin(Math.PI*Math.min(1,coffeeTime/3.1));
+    const local=new THREE.Vector3(.30*(1-lift*.65),-.43+lift*.33,-.72+lift*.37);
+    coffeeHeld.position.copy(local.applyQuaternion(camera.quaternion).add(camera.position));
+    coffeeHeld.quaternion.copy(camera.quaternion).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),-lift*.72));
+    coffeeHeld.scale.setScalar(1.25);
+  }
   function viewYaw() { return mode === 'follow' ? cam.yaw : Math.atan2(camera.position.x - controls.target.x, camera.position.z - controls.target.z); }
   function updatePlayer(t, dt) {
+    if(seated){
+      if(canWalk()&&(Math.abs(input.x)>.25||Math.abs(input.y)>.25))standUp();
+      else{player.speed=0;player.vel.set(0,0,0);return;}
+    }
     let mx = 0, mz = 0;
     // ←/→ turn you in first person; on the map they sidestep instead
     const strafe = THREE.MathUtils.clamp(input.x - (mode === 'follow' ? 0 : input.turn), -1, 1);
@@ -1465,7 +1507,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     return interactive.find((o) => o.userData.hit.kind === p.kind) || null;
   }
   function interactionReach(kind){
-    return kind==='talk'||kind==='npc'?3.2:kind==='plant'?3.0:4.5;
+    return kind==='talk'||kind==='npc'?3.2:kind==='plant'||kind==='seat'||kind==='coffee'?3.0:4.5;
   }
   function aimedPrompt(){
     if(!canWalk()||mode!=='follow'||fp.blend<1)return null;
@@ -1640,7 +1682,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     dust.rotation.y = Math.sin(t * 0.07) * 0.008;
     updateFloaters(dt);
     updateWriting(t, dt);
-    updateClock();
+    updateClock();updateCoffee(dt);vista.update(t);
     if (!draw) return;
     if (composer) composer.render(); else renderer.render(scene, camera);
     hooks.onFrame?.();
@@ -1697,6 +1739,10 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     startGuidedTour: beginGuidedTour,
     skipGuidedTour(){if(guided.active)finishGuidedTour();},
     get graphicsQuality(){return quality;},
+    get isSeated(){return seated;},
+    standUp,
+    sitDown,
+    drinkCoffee,
     get materialDiagnostics(){return {models:Object.fromEntries(propStatus),maps:Object.fromEntries(materialStatus),pixelRatio:renderer.getPixelRatio(),width:renderer.domElement.width,height:renderer.domElement.height};},
     setGraphicsQuality(next){
       quality=next==='balanced'?'balanced':'sharp';

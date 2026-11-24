@@ -70,7 +70,7 @@ export function guidedTourPlan({ profile, projects, workbench, certificates, art
       pos: [-3.52, 1.33], look: [-4.52, 2.0, 2.25], guide: [-2.95, 3.14],
       tags: ['Record player', 'Lamp', 'The cat'],
       speakerSay: "Oh, and there's something else you should know.",
-      exhibitSay: "You don't have to just look around. Try switching on the lamp, playing with the record player, or saying hello to the cat. There are little surprises hidden around the room.",
+      exhibitSay: "You can sit in the reading chair, drink coffee, open a project book, or watch dragons flying beyond the forest window. You can also switch the lamp and play the record player.",
     },
     {
       id: 'contact', title: 'Experience and contact', category: 'WORK & CONTACT',

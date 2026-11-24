@@ -494,8 +494,48 @@ export function createUI({ room = null }) {
   function toggleMap() {} // first person only now
   function onMode(m) { body.dataset.view = m; }
   const canvasEl = document.getElementById('room');
+  const bookDialog=$('#roomBook'),bookBody=$('#bookPages'),bookBack=$('#bookPrev'),bookNext=$('#bookNext');
+  let bookState=null,bookFocus=null;
+  const imageForBook=item=>item.image||articles.find(a=>a.url===item.writeup||item.title==='Literacy Gap Analysis'&&a.spine==="India's Classrooms"||item.title==='Delhi Air Quality 2021–2024'&&a.spine==='Delhi Air Quality'||item.title==='Global GDP Dashboard'&&a.spine==='Global GDP Dashboard')?.image;
+  function renderBook(){
+    if(!bookState)return;
+    const {item,page}=bookState;
+    const image=imageForBook(item);
+    const title=esc(item.title);
+    const stats=item.stats?.map(([k,v])=>'<li><strong>'+esc(v)+'</strong> '+esc(k)+'</li>').join('')||'';
+    const stack=item.stack?.map(x=>'<li>'+esc(x)+'</li>').join('')||'';
+    const left='<span class="book-kicker">RUCHIR · SELECTED WORK</span><h2>'+title+'</h2><p class="book-hook">'+esc(item.hook||item.tag||item.category||'Project notes')+'</p><p>'+esc(item.desc||'')+'</p>';
+    const picture=image?'<figure><img src="'+esc(image)+'" alt="Project illustration or output" loading="lazy"><figcaption>Project documentation</figcaption></figure>':'<p class="book-note">No verified project image is available for this entry.</p>';
+    const right=page===0?picture+(stack?'<h3>Technology</h3><ul>'+stack+'</ul>':'')+(stats?'<h3>Results</h3><ul>'+stats+'</ul>':''):
+      '<h3>Explore the work</h3>'+(item.live?'<p>Try the working application directly.</p><button type="button" class="book-live" data-book-live>Load live preview</button><p class="book-note">Some websites block embedded previews. Open the original site if the frame is unavailable.</p>'+ext(item.live,'Open live site'):'<p>No live demo is listed for this entry.</p>')+(item.source?ext(item.source,'Source code'):'')+(item.url||item.writeup?ext(item.url||item.writeup,'Read the article'):'')+'<div id="bookPreview"></div>';
+    bookBody.innerHTML='<article class="book-page">'+left+'</article><article class="book-page">'+right+'</article>';
+    bookBody.querySelector('img')?.addEventListener('error',e=>{e.target.closest('figure').innerHTML='<p class="book-note">Documentation image unavailable.</p>';});
+    $('#bookPageNumber').textContent=(page+1)+' / 2';bookBack.disabled=page===0;bookNext.disabled=page===1;
+  }
+  function openBook(kind,index){
+    const item=({project:projects,build:workbench,article:articles})[kind]?.[index];if(!item||!room)return;
+    bookFocus=document.activeElement;bookState={item,page:0};renderBook();
+    room.select(kind,index);room.lockMovement(true);bookDialog.showModal();body.classList.add('book-open');releaseMouse();
+  }
+  function closeBook(){
+    if(!bookDialog.open)return;bookDialog.close();
+  }
+  bookDialog.addEventListener('close',()=>{
+    bookBody.replaceChildren();bookState=null;body.classList.remove('book-open');
+    room?.clearSelection();room?.lockMovement(false);bookFocus?.focus?.({preventScroll:true});
+  });
+  $('#bookClose').addEventListener('click',closeBook);
+  bookBack.addEventListener('click',()=>{if(bookState){bookState.page=0;renderBook();}});
+  bookNext.addEventListener('click',()=>{if(bookState){bookState.page=1;renderBook();}});
+  bookBody.addEventListener('click',e=>{
+    if(!e.target.closest('[data-book-live]')||!bookState?.item.live)return;
+    const host=$('#bookPreview');if(!host||host.querySelector('iframe'))return;
+    const frame=document.createElement('iframe');frame.title='Live project preview';frame.src=bookState.item.live;
+    frame.sandbox='allow-scripts allow-forms allow-popups';frame.referrerPolicy='no-referrer';frame.loading='lazy';host.append(frame);
+  });
+  $('#standUp').addEventListener('click',()=>room?.standUp());
   let playing = false;          // has the visitor clicked "play" yet?
-  const panelOpen = () => drawer.classList.contains('open') || !list.hidden || chat.isOpen || !!popKind;
+  const panelOpen = () => drawer.classList.contains('open') || !list.hidden || chat.isOpen || !!popKind || bookDialog.open;
   let wasLocked = false;
   // After Esc or a closed panel, pointer lock must be requested by another real click.
   // A refused request must NOT permanently disable mouse-look.
@@ -965,6 +1005,9 @@ export function createUI({ room = null }) {
   // Called when something in the 3D room is clicked.
   function handleSelect(kind, index) {
     if (room?.isTouring) return;
+    if(kind==='seat'){if(room?.sitDown())toast('Seated · move joystick or tap Stand up to leave');return;}
+    if(kind==='coffee'){if(room?.drinkCoffee(index))toast('Enjoy your coffee');return;}
+    if(['project','build','article'].includes(kind)){hidePop();close();openBook(kind,index);return;}
     if (kind === 'npc') {
       const response = room?.act('npc', index);
       if (response) showNpcLine(index, response.name + ' · ' + response.role + ': ' + response.text);
@@ -997,8 +1040,8 @@ export function createUI({ room = null }) {
     beginGuidedTour, showTourStep, completeGuidedTour,
     showNpcLine,
     get playing() { return playing && play.hidden; },
-    blocksGameKeys: () => !!room?.isTouring || drawer.classList.contains('open') || !list.hidden || chat.isOpen || !play.hidden,
-    updateMarkers() { updateMarkers(); updatePop(); updatePrompt(); updateNpcCaption(); updateMiniMap(); updateTourProgress(); },
+    blocksGameKeys: () => !!room?.isTouring || drawer.classList.contains('open') || !list.hidden || chat.isOpen || !play.hidden || bookDialog.open,
+    updateMarkers() { updateMarkers(); updatePop(); updatePrompt(); updateNpcCaption(); updateMiniMap(); updateTourProgress(); $('#standUp').hidden=!room?.isSeated; },
     onHover: showTooltip,
     get isNight() { return night; },
   };
