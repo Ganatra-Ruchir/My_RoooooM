@@ -209,12 +209,13 @@ export function createRealCharacters({ scene, onLoaded = () => {}, onError = () 
   const loading = new Map();
   function load(id, position, options = {}) {
     if (loading.has(id)) return loading.get(id);
-    if (id === 'maya') {
+    if (id === 'maya' || (id === 'ruchir' && options.localAvatar)) {
       // The user-supplied 21 MB VRM is the only Mira. Do not substitute Emma,
       // show a 2D card, or change facial/clothing geometry when loading.
       const task = import('./vrm-meera.js')
         .then(({ loadMeeraVRM }) => loadMeeraVRM({
           x: position[0], z: position[1], scale: options.scale || 1.55,
+          id, localFile: options.localAvatar || null,
         }))
         .then(rig => {
           rigs.set(id, rig); scene.add(rig.root); onLoaded(id, rig); return rig;

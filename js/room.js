@@ -23,7 +23,7 @@ const STANDEE_POS = new THREE.Vector3(-3.15, 0, -2.5);
 const SPAWN = new THREE.Vector3(3.9, 0, 2.95);
 const GROUND_DAY = new THREE.Color(0xe6d5bf), GROUND_NIGHT = new THREE.Color(0x262a45);
 
-export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) {
+export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, localAvatar = null }) {
   // ---------- Renderer / scene ----------
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance' });
   const lowPower = matchMedia('(pointer: coarse)').matches || (navigator.deviceMemory && navigator.deviceMemory < 4);
@@ -191,12 +191,12 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
 
   // ---------- Room shell ----------
   const T = 0.3;
-  const cream = std(0xb6c2cf, { roughness: 0.97, map: plasterGrain });
-  const green = std(0x344452, { roughness: 0.95, map: plasterGrain });
-  const cut = std(0x9ba9b7, { roughness: 0.97, map: plasterGrain });
+  const cream = std(0x34312f, { roughness: 0.97, map: plasterGrain });
+  const green = std(0x292b2b, { roughness: 0.95, map: plasterGrain });
+  const cut = std(0x49443e, { roughness: 0.97, map: plasterGrain });
   const floorTex = TX.floorTexture();
   const floorEdge = std(0x6e4c36);
-  const floorMat = photograph(std(0xffffff, { map: floorTex, roughness: 0.68 }), 'wood_floor', 5, 5, {normal:.65});
+  const floorMat = photograph(std(0xb6a08a, { map: floorTex, roughness: 0.58 }), 'old_wooden_floor_01', 4, 4, {normal:.62});
   photograph(cream,'painted_plaster_wall',3,2,{color:false,normal:.25,rough:false});
   photograph(green,'painted_plaster_wall',3,2,{color:false,normal:.25,rough:false});
   mesh(box(10 + T, 0.5, 10 + T), [floorEdge, floorEdge, floorMat, floorEdge, floorEdge, floorEdge], -T / 2, -0.25, -T / 2, scene, { cast: false });
@@ -216,9 +216,9 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
   mesh(box(T, 6, 10 + T), [green, cut, cut, cut, cut, cut], -5 - T / 2, 3, -T / 2, scene, { cast: false });
 
   // wainscoting, rails and baseboards
-  const sage = std(0x899ba2, { roughness: 0.94, map: plasterGrain });
-  const deepGreen = std(0x293744, { roughness: 0.93, map: plasterGrain });
-  const trim = std(0xe4e0d9, { roughness: 0.62 });
+  const sage = std(0x302d2a, { roughness: 0.94, map: plasterGrain });
+  const deepGreen = std(0x242525, { roughness: 0.93, map: plasterGrain });
+  const trim = std(0x36322e, { roughness: 0.62 });
   mesh(box(10, 1.4, 0.03), sage, 0, 0.7, -4.985, scene, { cast: false });
   mesh(box(0.03, 1.4, 10), deepGreen, -4.985, 0.7, 0, scene, { cast: false });
   for (let i = 0; i < 16; i++) {
@@ -272,8 +272,16 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
   register(board, { kind: 'skills', index: 0, label: 'Toolkit whiteboard — skills' }, { dir: new THREE.Vector3(0, 0, 0), selectOffset: 0, hoverOffset: 0 });
   // ceiling with beams and a light (only shown while you're inside the room)
   const ceiling = new THREE.Group(); scene.add(ceiling);
-  mesh(box(10.6, 0.2, 10.6), std(0xf3ece1, { roughness: 1 }), 0, 6.1, 0, ceiling, flat);
-  for (const z of [-3.3, 0, 3.3]) mesh(box(10, 0.26, 0.32), std(0x8a5a3b, { roughness: 0.7 }), 0, 5.87, z, ceiling, flat);
+  const ceilingMat = std(0x36322e, { roughness: 0.97, map: plasterGrain });
+  mesh(box(10.6, 0.2, 10.6), ceilingMat, 0, 6.1, 0, ceiling, flat);
+  // Layered crown molding with inset shadow lines, rather than cartoon beams.
+  for (const side of [-1, 1]) {
+    for (let i = 0; i < 3; i++) {
+      const depth = 0.12 + i * 0.075, y = 5.94 - i * 0.065;
+      mesh(box(10, 0.07, depth), trim, 0, y, side * (5 - depth/2), ceiling, flat);
+      mesh(box(depth, 0.07, 10), trim, side * (5 - depth/2), y, 0, ceiling, flat);
+    }
+  }
   const fixtureMat = new THREE.MeshStandardMaterial({ color: 0xfff6e6, emissive: 0xffe2b0, emissiveIntensity: 0.2 });
   mesh(new THREE.CylinderGeometry(0.55, 0.62, 0.1, 32), fixtureMat, 0.6, 5.95, 1.65, ceiling, flat);
   const ceilingLight = new THREE.PointLight(0xffe2b8, 0, 16, 1.6);
@@ -291,7 +299,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
   const skyNight = new THREE.MeshBasicMaterial({ map: TX.skyTexture(true), toneMapped: false, transparent: true, opacity: 0 });
   mesh(new THREE.PlaneGeometry(winW + 1.4, winH + 1.2), skyDay, winCx, winCy, -5.9, scene, { cast: false, receive: false });
   mesh(new THREE.PlaneGeometry(winW + 1.4, winH + 1.2), skyNight, winCx, winCy, -5.89, scene, { cast: false, receive: false });
-  const frameMat = std(0xf6f1e8, { roughness: 0.5 });
+  const frameMat = std(0x292826, { roughness: 0.5 });
   mesh(box(winW + 0.24, 0.12, 0.12), frameMat, winCx, W_IN.y1 + 0.06, -4.97);
   mesh(box(winW + 0.4, 0.08, 0.36), frameMat, winCx, W_IN.y0 - 0.02, -4.88);
   mesh(box(0.12, winH, 0.12), frameMat, W_IN.x0 - 0.06, winCy, -4.97);
@@ -302,13 +310,16 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
   const glassPane = mesh(new THREE.PlaneGeometry(winW, winH), glass, winCx, winCy, -5.16, scene, { cast: false, receive: false });
   glassPane.raycast = () => {};
   // curtains
-  const curtainMat = photograph(std(0xc46e4f, { side: THREE.DoubleSide, roughness: .92 }), 'rough_linen', 2, 5, {color:false,normal:.5,rough:false});
+  const curtainMat = photograph(std(0x55504b, { side: THREE.DoubleSide, roughness: .92 }), 'rough_linen', 2, 5, {color:false,normal:.5,rough:false});
   for (const s of [-1, 1]) {
-    const geo = new THREE.PlaneGeometry(0.75, 3.4, 16, 1);
+    const geo = new THREE.PlaneGeometry(0.94, 4.7, 64, 28);
     const pos = geo.attributes.position;
-    for (let i = 0; i < pos.count; i++) pos.setZ(i, Math.sin(pos.getX(i) * 18) * 0.05);
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i), y = pos.getY(i);
+      pos.setZ(i, Math.sin(x * 31 + Math.sin(y * 2.4) * 0.26) * (0.09 + 0.02 * Math.cos(y * 1.4)));
+    }
     geo.computeVertexNormals();
-    mesh(geo, curtainMat, winCx + s * (winW / 2 + 0.3), 3.15, -4.86);
+    mesh(geo, curtainMat, winCx + s * (winW / 2 + 0.38), 2.5, -4.82);
   }
   rod(new THREE.Vector3(W_IN.x0 - 0.8, 4.92, -4.84), new THREE.Vector3(W_IN.x1 + 0.8, 4.92, -4.84), 0.025, std(0x3a3a3a, { metalness: 0.6, roughness: 0.4 }));
   // tiny plant on the sill
@@ -394,7 +405,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
   const shelf = new THREE.Group();
   shelf.position.set(3.0, 0, -4.62);
   scene.add(shelf);
-  const wood = photograph(std(0xb4a18b, { roughness: 0.7 }), 'wood_table', 1, 2, {normal:.42});
+  const wood = photograph(std(0xaea09a, { roughness: 0.7 }), 'dark_wood', 1, 2, {normal:.42});
   const SW = 3.4, SD = 0.7, SH = 4.4, st = 0.08;
   mesh(box(st, SH, SD), wood, -SW / 2 + st / 2, SH / 2, 0, shelf);
   mesh(box(st, SH, SD), wood, SW / 2 - st / 2, SH / 2, 0, shelf);
@@ -470,7 +481,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
 
   // ---------- Desk ----------
   const DESK = { x: -0.8, y: 1.45, z: -1.65, w: 2.9, d: 1.3 };
-  const oak = photograph(std(0xe3c9aa, { roughness: 0.55 }), 'wood_table', 2, 1, {normal:.38});
+  const oak = photograph(std(0xb9a493, { roughness: 0.55 }), 'dark_wood', 2, 1, {normal:.38});
   const black = std(0x222326, { roughness: 0.5, metalness: 0.3 });
   mesh(rbox(DESK.w, 0.08, DESK.d, 0.025), oak, DESK.x, DESK.y, DESK.z);
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) mesh(box(0.06, DESK.y - 0.04, 0.06), black, DESK.x + sx * (DESK.w / 2 - 0.1), (DESK.y - 0.04) / 2, DESK.z + sz * (DESK.d / 2 - 0.1));
@@ -573,7 +584,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
   const ruchir = { pos: AVATAR_POS.clone(), standee: null };
 
   // ...or his character art as a life-size standee beside the desk (set profile.character in data.js)
-  const charUrl = new URLSearchParams(location.search).get('character') || data.profile.character;
+  const charUrl = localAvatar ? null : (new URLSearchParams(location.search).get('character') || data.profile.character);
   // Keep the sculpted placeholder completely out of sight while the real skinned mesh loads.
   // A failed fetch restores it, rather than leaving a broken room.
   if (!charUrl) avatar.person.visible = false;
@@ -657,7 +668,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
       if (id === 'ruchir' && !charUrl) avatar.person.visible = true;
     },
   });
-  if (!charUrl) realCharacters.load('ruchir', [STANDEE_POS.x, STANDEE_POS.z], { outfit: 'shirt', scale: 1.56 });
+  if (!charUrl) realCharacters.load('ruchir', [STANDEE_POS.x, STANDEE_POS.z], { outfit: 'shirt', scale: 1.56, localAvatar });
   // Meera is the entire introduction. Load her model immediately and expose the
   // promise so the opening scene never shows an empty avatar or a substituted 2D still.
   const guideReady = realCharacters.load('maya', [2.75, -2.8], {
@@ -668,14 +679,23 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
   walkRing.raycast = () => {};
 
   // ---------- Decor ----------
-  const rug = mesh(new THREE.CircleGeometry(2.2, 64), new THREE.MeshStandardMaterial({ map: TX.rugTexture(), roughness: 1 }), 1.5, 0.012, 1.6, scene, { cast: false });
+  const rugMaterial = photograph(std(0x8d7862, {map: fabricGrain, roughness: 1}), 'rough_linen', 9, 8, {normal: .85, rough:true});
+  const rug = mesh(new THREE.PlaneGeometry(4.25, 3.75), rugMaterial, 1.5, 0.014, 1.6, scene, { cast: false });
   rug.rotation.x = -Math.PI / 2;
   const loungeFabric = photograph(new THREE.MeshPhysicalMaterial({
-    color: 0xc1c5c0, roughness: 0.95, sheen: 0.48, sheenRoughness: 0.89, map: fabricGrain,
-  }), 'rough_linen', 5, 5, {color:false,normal:.6,rough:false});
-  const bean = mesh(new THREE.SphereGeometry(0.72, 48, 32), loungeFabric, 2.7, 0.4, 2.4);
-  bean.scale.set(1, 0.6, 1);
-  mesh(new THREE.SphereGeometry(0.4, 32, 24), loungeFabric, 2.45, 0.68, 2.15).scale.set(1, 0.55, 1);
+    color: 0x9b8067, roughness: 0.91, sheen: 0.45, sheenRoughness: 0.85, map: fabricGrain,
+  }), 'rough_linen', 2, 2, {color:true,normal:.65,rough:true});
+  // One upholstered reading chair, no sofa. Keep its footprint within the old beanbag collider.
+  const chair = new THREE.Group(); chair.position.set(2.7,0,2.4); chair.rotation.y = -0.65; scene.add(chair);
+  const chairWood = photograph(std(0x997c61, {roughness:.48}), 'dark_wood', 1, 1, {normal:.45});
+  mesh(rbox(1.1,.25,1.05,.08),chairWood,0,.31,0,chair);
+  mesh(rbox(1.02,.26,.93,.12),loungeFabric,0,.53,.06,chair);
+  const back = mesh(rbox(1.07,.93,.22,.09),loungeFabric,0,1.02,-.45,chair); back.rotation.x=-.13;
+  for(const side of [-1,1]) {
+    mesh(rbox(.17,.34,.96,.07),loungeFabric,side*.53,.78,0,chair);
+    for(const z of [-.38,.38]) mesh(rbox(.10,.28,.10,.025),chairWood,side*.43,.14,z,chair);
+  }
+  const pillow=mesh(rbox(.46,.42,.18,.08),std(0x49372d,{map:fabricGrain,roughness:.94}),.12,.89,-.23,chair); pillow.rotation.z=-.12;
   // low coffee table on the rug with a stack of webtoon comics and a sketch pad
   const tableG = new THREE.Group(); tableG.position.set(0.7, 0, 1.0); tableG.rotation.y = 0.25; scene.add(tableG);
   mesh(new THREE.CylinderGeometry(0.62, 0.62, 0.07, 36), oak, 0, 0.5, 0, tableG);
@@ -764,8 +784,31 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
   }));
   dust.raycast = () => {}; scene.add(dust);
 
-  const DAY = { hemi: 0.78, hemiSky: new THREE.Color(0xdde8f6), hemiGround: new THREE.Color(0x57636f), sun: 2.2, sunCol: new THREE.Color(0xe6efff), fill: 0.75, lamp: 1.05, neon: 0.34, screen: 0.32, bulb: 0.28, gallery: 0, exposure: 1.04, pic: 1 };
-  const NIGHT = { hemi: 0.38, hemiSky: new THREE.Color(0x6a74b8), hemiGround: new THREE.Color(0x2a2030), sun: 0.55, sunCol: new THREE.Color(0x9fb4ff), fill: 0.12, lamp: 9, neon: 4, screen: 2.2, bulb: 3, gallery: 2.5, exposure: 1.1, pic: 0.92 };
+  // Warm practical lighting on real geometry, with a cool window key.
+  const practicalLights = [];
+  function practical(x,y,z,tx,ty,tz,power) {
+    const light = new THREE.SpotLight(0xffc58b,power,9,Math.PI/3.5,.72,2);
+    light.position.set(x,y,z); light.target.position.set(tx,ty,tz);
+    scene.add(light,light.target); practicalLights.push([light,power]);
+    return light;
+  }
+  const portraitKey = practical(-3.1,4.9,-.8,-3.15,2.25,-2.5,34);
+  portraitKey.castShadow = !lowPower;
+  portraitKey.shadow.mapSize.set(1024,1024);
+  portraitKey.shadow.bias = -.00015; portraitKey.shadow.normalBias=.018;
+  practical(3.4,5.2,-3.1,3.1,2.3,-4.65,38);
+  practical(-3.9,5.35,.2,-4.9,3.6,0,42);
+  // Floor lamp with brass stand and warm fabric shade, clear of player paths.
+  const lampDecor = new THREE.Group(); lampDecor.position.set(4.25,0,3.65); scene.add(lampDecor);
+  const bronze=std(0x8d6341,{metalness:.72,roughness:.34});
+  mesh(new THREE.CylinderGeometry(.24,.26,.05,32),bronze,0,.03,0,lampDecor);
+  mesh(new THREE.CylinderGeometry(.027,.035,2.45,18),bronze,0,1.26,0,lampDecor);
+  const shade=std(0x9a7650,{side:THREE.DoubleSide,roughness:.9,emissive:0xffaa55,emissiveIntensity:.52,map:fabricGrain});
+  mesh(new THREE.CylinderGeometry(.23,.47,.48,48,1,true),shade,0,2.49,0,lampDecor);
+  const floorLamp = new THREE.PointLight(0xffba75,23,6,2);
+  floorLamp.position.set(4.25,2.25,3.65); scene.add(floorLamp);
+  const DAY = { hemi: 0.65, hemiSky: new THREE.Color(0xdce4e5), hemiGround: new THREE.Color(0x726050), sun: 1.7, sunCol: new THREE.Color(0xe6efff), fill: 0.32, lamp: 4, neon: 0.2, screen: 0.32, bulb: 0.6, gallery: 0.8, exposure: 1.13, pic: 1 };
+  const NIGHT = { hemi: 0.43, hemiSky: new THREE.Color(0x8697a7), hemiGround: new THREE.Color(0x60483b), sun: 0.32, sunCol: new THREE.Color(0xb1c9df), fill: 0.22, lamp: 16, neon: 0.45, screen: 0.8, bulb: 2, gallery: 1.4, exposure: 1.3, pic: 1 };
   let nightTarget = 0, night = 0;
   function applyNight(n) {
     const L = (a, b) => a + (b - a) * n;
@@ -775,7 +818,9 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
     sun.intensity = L(DAY.sun, NIGHT.sun);
     sun.color.copy(DAY.sunCol).lerp(NIGHT.sunCol, n);
     fill.intensity = L(DAY.fill, NIGHT.fill);
-    cornerBounce.intensity = L(0.45, 1.7);
+    cornerBounce.intensity = L(0.35, 1.2);
+    practicalLights.forEach(([light,power])=>{light.intensity=power*L(.62,1);});
+    floorLamp.intensity=L(10,23); shade.emissiveIntensity=L(.25,.8);
     lampLight.intensity = L(DAY.lamp, NIGHT.lamp) * lampAmt;
     neonLight.intensity = L(DAY.neon, NIGHT.neon);
     neonMat.opacity = L(0.75, 1);
@@ -786,7 +831,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
     groundMat.color.copy(GROUND_DAY).lerp(GROUND_NIGHT, n);
     // the ceiling light only matters when you're inside, walking around at night
     const inside = ceiling.visible ? 1 : 0;
-    ceilingLight.intensity = L(0, 7) * inside;
+    ceilingLight.intensity = L(0.3, 1.6) * inside;
     fixtureMat.emissiveIntensity = L(0.2, 1.6);
     renderer.toneMappingExposure = L(DAY.exposure, NIGHT.exposure);
     sun.shadow.radius=lowPower?1:3;

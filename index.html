@@ -84,6 +84,7 @@
       <label class="mouse-invert"><input type="checkbox" id="invertMouse"> Invert vertical look</label>
     </div>
     <button type="button" id="tourExploreBtn">▶ Start Exploring</button>
+    <button type="button" class="ghost-btn" data-local-avatar>Load Ruchir VRM locally</button>
   </section>
   <button class="prompt" id="prompt" type="button" hidden><kbd>E</kbd><span id="promptText"></span></button>
 
@@ -101,6 +102,7 @@
       <ul class="help-keys play-keys" id="playKeys"></ul>
       <p class="mouse-tip">Mouse = camera · WASD = move · Shift = sprint · E = interact</p>
       <button class="ghost-btn play-text" id="playText" type="button">Prefer reading? Open the text version</button>
+      <button class="ghost-btn play-text" type="button" data-local-avatar>Load Ruchir VRM locally</button>
     </div>
   </div>
 
@@ -129,6 +131,8 @@
     </div>
   </section>
 
+  <input type="file" id="localAvatarFile" accept=".vrm,model/gltf-binary" hidden>
+  <p id="localAvatarCredit" hidden>Local avatar: Boy 2 by @SherryKatzu &amp; @Rarestgrass · private browser preview</p>
   <header class="topbar">
     <div class="brand">
       <span class="mono" aria-hidden="true">RG</span>

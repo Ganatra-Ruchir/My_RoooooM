@@ -54,14 +54,14 @@ const X_AXIS = new THREE.Vector3(1,0,0);
 const Y_AXIS = new THREE.Vector3(0,1,0);
 const scratchQuat = new THREE.Quaternion();
 
-export async function loadMeeraVRM({ x, z, scale = 1.52, onProgress } = {}) {
+export async function loadMeeraVRM({ x, z, scale = 1.52, onProgress, localFile = null, id = 'maya' } = {}) {
   // Import lazily so a temporary CDN failure doesn't break Ruchir, the room,
   // certificates or fallback text version.
   const { VRMLoaderPlugin, VRMUtils } = await import('@pixiv/three-vrm');
   const loader = new GLTFLoader();
   loader.register(parser => new VRMLoaderPlugin(parser));
   loader.crossOrigin = 'anonymous';
-  const assetURL = await originalVRMBlobURL(onProgress);
+  const assetURL = localFile ? URL.createObjectURL(localFile) : await originalVRMBlobURL(onProgress);
   let gltf;
   try {
     gltf = await loader.loadAsync(assetURL);
@@ -83,7 +83,7 @@ export async function loadMeeraVRM({ x, z, scale = 1.52, onProgress } = {}) {
     // Keep original mesh raycasting so direct interaction still works.
   });
   const root = new THREE.Group();
-  root.name = 'meera-vrm-guide';
+  root.name = id === 'maya' ? 'meera-vrm-guide' : 'ruchir-local-vrm';
   root.position.set(x || 0, 0, z || 0);
   root.add(vrm.scene);
   vrm.scene.scale.setScalar(scale);
@@ -138,7 +138,7 @@ export async function loadMeeraVRM({ x, z, scale = 1.52, onProgress } = {}) {
     for (const bone of bones.values()) bone.node.quaternion.copy(bone.rest);
   }
   const rig = {
-    id:'maya', vrm, root, model:vrm.scene, head, active:'Idle',
+    id, vrm, root, model:vrm.scene, head, active:'Idle',
     // Original VRM has no included animation clips: mark the animation type accurately.
     animationSource:'runtime-humanoid-pose',
     play(next){ state=next || 'Idle'; rig.active=state; },

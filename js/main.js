@@ -2,6 +2,8 @@
 import * as data from './data.js';
 import { createUI } from './ui.js';
 import { createControls } from './controls.js';
+import { readLocalAvatar, wireLocalAvatar } from './local-avatar.js';
+wireLocalAvatar();
 
 const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const loader = document.getElementById('loader');
@@ -54,6 +56,7 @@ async function boot() {
   if (!hasWebGL()) return textOnly();
   await fontsReady();
 
+  const localAvatar = await readLocalAvatar();
   let createRoom;
   try {
     ({ createRoom } = await import('./room.js'));
@@ -70,6 +73,7 @@ async function boot() {
       canvas: document.getElementById('room'),
       data,
       reducedMotion: reduced,
+      localAvatar,
       hooks: {
         onProgress: (p) => { bar.style.width = Math.round(p * 100) + '%'; },
         onReady: () => start(),
@@ -94,7 +98,7 @@ async function boot() {
   ui.onMode(room.mode);
   createControls({ room, ui });
   if (new URLSearchParams(location.search).has('debug')) Object.assign(window, { room, ui }); // dev helper
-  const night = isNightInIndia();
+  const night = true; // Reference-inspired evening lighting; window toggle still offers daylight.
   ui.setNight(night);
   room.setNight(night, true);
 
