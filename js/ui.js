@@ -642,24 +642,38 @@ export function createUI({ room = null }) {
   const tourVoice = $('#tourVoice');
   let voiceEnabled = false;
   let currentNarration = '';
+  let currentUtterance = null;
+  const speechState = { enabled:false, active:false, word:'' };
+  globalThis.__meeraVoice = speechState;
+  function stopGuideVoice() {
+    currentUtterance=null;
+    speechState.active=false; speechState.word='';
+    window.speechSynthesis?.cancel();
+  }
   function speakGuide(text) {
     if (!voiceEnabled || !('speechSynthesis' in window) || !('SpeechSynthesisUtterance' in window)) return;
-    window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = 'en-IN'; u.rate = 1.04; u.pitch = 1.08; u.volume = 0.94;
-    const voices = window.speechSynthesis.getVoices();
-    const femaleVoice = /Samantha|Zira|Aria|Jenny|Victoria|Karen|Female|Neerja|Heera/i;
-    u.voice = voices.find(v => /^en/i.test(v.lang) && femaleVoice.test(v.name))
-      || voices.find(v => v.lang.toLowerCase() === 'en-in')
-      || voices.find(v => v.lang.toLowerCase().startsWith('en')) || null;
-    try { window.speechSynthesis.speak(u); } catch { /* subtitles remain visible */ }
+    stopGuideVoice();
+    const u = new SpeechSynthesisUtterance(text.replace(/—/g, ', ').replace(/\bW, A, S, and D\b/g,'W, A, S and D'));
+    const voices = window.speechSynthesis.getVoices().filter(v=>/^en/i.test(v.lang));
+    const female=/Samantha|Zira|Aria|Jenny|Victoria|Karen|Female|Neerja|Heera|Libby|Ava|Emma|Serena|Sonia|Natasha|Michelle|Moira/i;
+    const quality=/Natural|Neural|Premium|Enhanced|Online|Google US English|Google UK English Female/i;
+    const ranked=voices.map(v=>({v,score:(female.test(v.name)?45:0)+(quality.test(v.name)?100:0)+(/en-IN/i.test(v.lang)?12:0)+(v.localService?0:5)})).sort((a,b)=>b.score-a.score);
+    u.voice=ranked[0]?.v||null;
+    u.lang=u.voice?.lang||'en-IN'; u.rate=.93; u.pitch=1.02; u.volume=.92;
+    currentUtterance=u;
+    u.onstart=()=>{if(currentUtterance===u){speechState.active=true;speechState.word='';}};
+    u.onboundary=e=>{if(currentUtterance!==u)return;const word=u.text.slice(e.charIndex).match(/^\s*([\w'-]+)/);if(word)speechState.word=word[1];};
+    const finish=()=>{if(currentUtterance===u){speechState.active=false;speechState.word='';currentUtterance=null;}};
+    u.onend=finish;u.onerror=finish;
+    try { window.speechSynthesis.speak(u); } catch { finish(); }
   }
   if (!('speechSynthesis' in window)) tourVoice.hidden = true;
   tourVoice?.addEventListener('click', () => {
     voiceEnabled = !voiceEnabled;
+    speechState.enabled=voiceEnabled;
     tourVoice.textContent = voiceEnabled ? 'Mute Meera' : '◉ Hear Meera';
     tourVoice.setAttribute('aria-pressed', String(voiceEnabled));
-    if (!voiceEnabled) window.speechSynthesis?.cancel();
+    if (!voiceEnabled) stopGuideVoice();
     else if (currentNarration) speakGuide(currentNarration);
   });
   function beginGuidedTour() {
@@ -706,7 +720,7 @@ export function createUI({ room = null }) {
     tourPanel.hidden = true;
     tourFinished.hidden = false;
     playing = false; // explicit Start Exploring click grants real pointer-lock permission
-    if (voiceEnabled) window.speechSynthesis?.cancel();
+    if (voiceEnabled) stopGuideVoice();
     showNpcLine(0, 'Meera · Your guide: The tour is complete. Click Start Exploring to take control.', 8000);
   }
   $('#tourExploreBtn')?.addEventListener('click', () => {

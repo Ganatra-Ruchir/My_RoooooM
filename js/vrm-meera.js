@@ -46,7 +46,7 @@ const clamp = THREE.MathUtils.clamp;
 const BODY_PARTS = [
   'hips','spine','chest','upperChest','neck','head',
   'leftShoulder','rightShoulder','leftUpperArm','rightUpperArm',
-  'leftLowerArm','rightLowerArm','leftUpperLeg','rightUpperLeg',
+  'leftLowerArm','rightLowerArm','leftHand','rightHand','leftUpperLeg','rightUpperLeg',
   'leftLowerLeg','rightLowerLeg','leftFoot','rightFoot',
 ];
 const Z_AXIS = new THREE.Vector3(0,0,1);
@@ -101,8 +101,29 @@ export async function loadMeeraVRM({ x, z, scale = 1.52, onProgress } = {}) {
   const keys = new Set(expressions?.expressions?.map(x => x.expressionName) || []);
   const voiceKeys = ['aa','ih','ou','ee','oh']; // VRM0 A/I/U/E/O -> normalized VRM names
   let nextBlink=2.9, blinkUntil=0, state='Idle', breath=0;
-  let gesture=0, talkPulse=0;
-  let lastNow=0, lastPlayer=null;
+  let talkPulse=0, walkMix=0, talkMix=0, waveMix=0, gazeSmooth=0;
+  let lastWordAt=-10, spokenWord='', lastVoice=false;
+  const faceValues = new Map();
+  const targetQ = new THREE.Quaternion(), swingQ = new THREE.Quaternion();
+  const restDir = new THREE.Vector3(), targetDir = new THREE.Vector3();
+  // Normalized VRM bones have standardized axes. Aim from each actual
+  // elbow offset, not from an assumed left/right T-pose rotation sign.
+  function aimArm(side, amount, forward) {
+    const upper = bones.get(side+'UpperArm'), lower = bones.get(side+'LowerArm');
+    if(!upper || !lower) return;
+    restDir.copy(lower.node.position).applyQuaternion(upper.rest).normalize();
+    if(restDir.lengthSq() < .5) return;
+    const lateral = Math.sign(restDir.x) || (side==='left'?1:-1);
+    targetDir.set(lateral * (0.12 + 0.42*amount), -0.96+0.32*amount, forward).normalize();
+    swingQ.setFromUnitVectors(restDir,targetDir);
+    targetQ.copy(upper.rest).premultiply(swingQ);
+    upper.node.quaternion.copy(targetQ);
+  }
+  function expression(name,value,dt,speed=13){
+    if(!keys.has(name))return;
+    const next=THREE.MathUtils.damp(faceValues.get(name)||0,value,speed,dt);
+    faceValues.set(name,next);setExpr(name,next);
+  }
   function setExpr(name, value) {
     if (!expressions) return;
     // expressionManager#setValue handles VRM0 normalized presets.
@@ -111,7 +132,7 @@ export async function loadMeeraVRM({ x, z, scale = 1.52, onProgress } = {}) {
   function bend(name, axis, angle) {
     const bone = bones.get(name); if (!bone) return;
     scratchQuat.setFromAxisAngle(axis,angle);
-    bone.node.quaternion.copy(bone.rest).multiply(scratchQuat);
+    bone.node.quaternion.multiply(scratchQuat);
   }
   function resetSkeleton() {
     for (const bone of bones.values()) bone.node.quaternion.copy(bone.rest);
@@ -128,34 +149,31 @@ export async function loadMeeraVRM({ x, z, scale = 1.52, onProgress } = {}) {
       const speaking=requested==='Talk' || greeting;
       const attention=requested==='Think';
       if(requested!==state)rig.play(requested);
-      lastNow=now;
       resetSkeleton();
       breath += dt*1.55;
-      const move = locomotion ? 1 : 0;
+      walkMix=THREE.MathUtils.damp(walkMix,locomotion?1:0,7,dt);
+      talkMix=THREE.MathUtils.damp(talkMix,speaking?1:0,7,dt);
+      waveMix=THREE.MathUtils.damp(waveMix,greeting?1:0,8,dt);
+      const move = walkMix;
       const stride = Math.sin(now*6.1), opp = Math.sin(now*6.1 + Math.PI);
       const relax = Math.sin(breath)*0.015;
       bend('leftUpperLeg', X_AXIS, stride*0.44*move);
       bend('rightUpperLeg', X_AXIS, opp*0.44*move);
       bend('leftLowerLeg', X_AXIS, Math.max(0,-stride)*0.36*move);
       bend('rightLowerLeg', X_AXIS, Math.max(0,-opp)*0.36*move);
-      bend('leftUpperArm', X_AXIS, -stride*0.30*move -0.035);
-      bend('rightUpperArm', X_AXIS, -opp*0.30*move -0.035);
-      bend('leftLowerArm', X_AXIS, -0.08 - Math.max(0, stride)*0.1*move);
-      bend('rightLowerArm', X_AXIS, -0.08 - Math.max(0, opp)*0.1*move);
+      // Start in a relaxed, down-at-the-sides posture, including at dt=0.
+      // Small asymmetric conversational gestures replace the permanently open arms.
+      const emphasis=(.5+.5*Math.sin(now*2.4))*talkMix*(1-waveMix);
+      aimArm('left', .035 + emphasis*.12, -stride*.18*move + .06);
+      aimArm('right', .045 + emphasis*.42 + waveMix*.8, -opp*.18*move + .07 + emphasis*.32 + waveMix*.36);
+      bend('leftLowerArm', Z_AXIS, (Math.sign(bones.get('leftLowerArm')?.node.position.x||1))*(.12+emphasis*.14));
+      bend('rightLowerArm', Z_AXIS, (Math.sign(bones.get('rightLowerArm')?.node.position.x||-1))*(.14+emphasis*.45+waveMix*.74));
+      bend('leftHand',Y_AXIS, .09 + emphasis*.04);
+      bend('rightHand',Y_AXIS, -.09 - emphasis*.08);
       bend('chest', X_AXIS, relax);
       bend('spine', Z_AXIS, Math.sin(now*1.12)*0.013);
-      if(greeting){
-        const arm = bones.get('rightUpperArm');
-        if(arm) arm.node.quaternion.copy(arm.rest)
-          .multiply(new THREE.Quaternion().setFromAxisAngle(Z_AXIS, -0.94))
-          .multiply(new THREE.Quaternion().setFromAxisAngle(X_AXIS, -0.35));
-        bend('rightLowerArm', Z_AXIS, -0.32 - 0.12*Math.sin(now*7));
-      } else if(speaking){
-        bend('rightUpperArm', Z_AXIS, -0.26 - 0.12*Math.sin(now*2.7));
-        bend('rightLowerArm', X_AXIS, -0.36 - 0.11*Math.sin(now*3.7));
-      } else if(attention){
-        bend('rightLowerArm', X_AXIS, -0.36);
-      }
+      bend('rightHand',Z_AXIS,waveMix*.21*Math.sin(now*6));
+      if(attention) bend('head',Z_AXIS,.055);
       // Subtle head attention relative to NPC root. Avoid twists beyond VRM neck limits.
       let gaze=0;
       if(playerTarget && !locomotion) {
@@ -169,8 +187,13 @@ export async function loadMeeraVRM({ x, z, scale = 1.52, onProgress } = {}) {
           gaze = clamp(Math.atan2(Math.sin(wanted),Math.cos(wanted)), -0.18, 0.18);
         }
       }
-      bend('head',Y_AXIS,gaze + Math.sin(now*0.59)*0.027);
-      bend('head',X_AXIS,0.027 + Math.sin(now*1.6)*0.012);
+      gazeSmooth=THREE.MathUtils.damp(gazeSmooth,gaze,6,dt);
+      bend('head',Y_AXIS,gazeSmooth + Math.sin(now*0.59)*0.027);
+      bend('head',X_AXIS,0.027 + Math.sin(now*1.6)*0.012 + talkMix*.022*Math.sin(now*3.1));
+      bend('head',Z_AXIS, talkMix*.025*Math.sin(now*1.4));
+      if(vrm.lookAt && playerTarget && !locomotion && vrm.lookAt.lookAt) {
+        vrm.lookAt.lookAt(playerTarget);
+      }
 
       // The VRM0 source embeds Blink and A/I/U/E/O blendshape groups.
       if(now >= nextBlink) {
@@ -180,12 +203,22 @@ export async function loadMeeraVRM({ x, z, scale = 1.52, onProgress } = {}) {
       const blink = now < blinkUntil
         ? Math.sin((blinkUntil - now) / 0.16 * Math.PI) * 0.95 : 0;
       setExpr('blink',blink);
-      talkPulse += dt*9.6;
-      const mouth = speaking ? 0.13 + 0.36*Math.pow(Math.max(0,Math.sin(talkPulse)),1.5) : 0;
-      setExpr('aa',mouth);
-      setExpr('ih',speaking ? mouth*0.12 : 0);
-      setExpr('ou',speaking ? mouth*0.16 : 0);
-      setExpr('ee',0); setExpr('oh',0);
+      // Browser speech boundary events drive vowel shapes when available.
+      // With muted narration, use restrained caption-time gestures instead.
+      const speech=globalThis.__meeraVoice;
+      if(speech?.active && speech.word !== spokenWord){spokenWord=speech.word||'';lastWordAt=now;}
+      if(speech?.active && !lastVoice)lastWordAt=now;
+      lastVoice=!!speech?.active;
+      const visibleSpeech=speaking && (!speech?.enabled || speech.active);
+      talkPulse+=dt*8.4;
+      const pulse=Math.pow(Math.max(0,Math.sin(talkPulse)),1.3);
+      const vowel=(spokenWord.toLowerCase().match(/[aeiou]/)||[])[0]||'a';
+      const shape=({a:'aa',e:'ee',i:'ih',o:'oh',u:'ou'})[vowel];
+      const jaw=visibleSpeech?(0.06+0.32*pulse)*(speech?.active && now-lastWordAt>1.4?.45:1):0;
+      for(const key of voiceKeys)expression(key,key===shape?jaw:jaw*.08,dt,22);
+      expression('happy', .10+waveMix*.22+talkMix*.12,dt,5);
+      expression('relaxed', .07+talkMix*.09,dt,5);
+      expression('surprised',waveMix*.06,dt,6);
       vrm.update(dt);
     },
     headWorld(out){
