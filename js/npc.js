@@ -15,17 +15,7 @@ const PEOPLE = [
       'Look around the room — even the small objects have stories.',
     ],
   },
-  {
-    name: 'Dev', role: 'Developer & friend',
-    seed: 53, skin: 0xb67c55, hair: 0x171a1e, jacket: 0x384d5b, shirt: 0xddd9ce, pants: 0x24252b,
-    waypoints: [[-2.9, 1.2], [-1.9, 2.25], [-3.1, 3.55], [-3.6, 2.0]],
-    lines: [
-      'Every object here has an interaction. Try the E key.',
-      'The certificates are on the green wall to your left.',
-      'Great interfaces should feel alive, but still work on a phone.',
-      'The record player and the cat are worth finding.',
-    ],
-  },
+
 ];
 const clamp = THREE.MathUtils.clamp;
 const distance2 = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
@@ -89,7 +79,7 @@ function makeNPC(spec, index) {
   add(head, new THREE.SphereGeometry(0.045, 10, 8), M.skin, 0, 0.17, 0.272).scale.set(0.8, 1.3, 0.85);
   const mouth = add(head, new THREE.TorusGeometry(0.062, 0.009, 7, 18, Math.PI), M.hair, 0, 0.097, 0.253);
   mouth.rotation.z = Math.PI;
-  // Dev has low-profile frames, Maya wears a small earring.
+  // Optional accessory geometry for the guide placeholder.
   if (index === 1) {
     for (const side of [-1, 1]) {
       add(head, new THREE.TorusGeometry(0.086, 0.007, 5, 4), M.metal, side * 0.108, 0.26, 0.287).rotation.z = Math.PI / 4;

@@ -9,7 +9,6 @@ const SOURCE = 'https://cdn.jsdelivr.net/gh/memoriesrohit/avatar-studio@2fd9ec82
 const CATALOG = Object.freeze({
   ruchir: 'arjun_smart.glb', // realistic South Asian-featured model, placeholder for a custom likeness
   // maya is loaded exclusively by js/vrm-meera.js from the exact user-uploaded VRM.
-  dev: 'ryan_smart.glb',
 });
 const NAMED_PARTS = new Set([
   'Outfit_original', 'Skin_original', 'Outfit_formal', 'Skin_formal',

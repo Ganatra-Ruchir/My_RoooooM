@@ -643,10 +643,10 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
         register(rig.root, { kind: 'talk', index: 0, label: 'Talk to Ruchir' },
           { dir: new THREE.Vector3(), selectOffset: 0, hoverOffset: 0 });
         addObstacle([STANDEE_POS.x, STANDEE_POS.z, 0.44]);
-      } else {
-        const index = id === 'maya' ? 0 : 1;
+      } else if (id === 'maya') {
+        const index = 0;
         npcSystem.attachVisual(index, rig.root);
-        register(rig.root, { kind: 'npc', index, label: 'Talk to ' + (index ? 'Dev' : 'Meera') },
+        register(rig.root, { kind: 'npc', index, label: 'Talk to Meera' },
           { dir: new THREE.Vector3(), selectOffset: 0, hoverOffset: 0 });
       }
     },
@@ -663,8 +663,6 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
   const guideReady = realCharacters.load('maya', [2.75, -2.8], {
     outfit: 'tee', scale: 1.55, tint: '#b4c9a4',
   });
-  // Secondary NPC may stream in afterward without delaying the tour.
-  setTimeout(() => realCharacters.load('dev', [-2.9, 1.2], { outfit: 'shirt', scale: 1.55 }), 500);
   const walkRing = mesh(new THREE.RingGeometry(0.16, 0.26, 32), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false }), 0, 0.03, 0, scene, { cast: false, receive: false });
   walkRing.rotation.x = -Math.PI / 2;
   walkRing.raycast = () => {};
@@ -1291,7 +1289,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
     if (p.root) return p.root;
     if (p.kind === 'cert') return certRoots[p.index];
     if (p.kind === 'talk') return ruchir.real?.root || (ruchir.standee ? ruchir.standee.root : avatar.person);
-    if (p.kind === 'npc') return realCharacters.get(p.index ? 'dev' : 'maya')?.root || null;
+    if (p.kind === 'npc') return p.index === 0 ? (realCharacters.get('maya')?.root || null) : null;
     if (p.kind === 'contact') return neon;
     return interactive.find((o) => o.userData.hit.kind === p.kind) || null;
   }
@@ -1414,7 +1412,6 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
       ruchir: talking ? 'Talk' : t < greetUntil ? 'Wave' : 'Idle',
       maya: guided.active ? (npcSystem.getState(0) === 'roam' ? 'Walk' :
         (guided.beat === 'speaker' || guided.beat === 'exhibit') ? 'Talk' : 'Idle') : npcMove(npcSystem.getState(0)),
-      dev: npcMove(npcSystem.getState(1)),
     }, visitorHead);
     const avatarHot = !!hovered && ['avatar', 'talk'].includes(hovered.userData.hit.kind);
     if (avatar.person.visible) {
