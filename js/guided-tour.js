@@ -38,7 +38,7 @@ export function guidedTourPlan({ profile, projects, workbench, certificates, art
     },
     {
       id: 'projects', title: 'Projects built by Ruchir', category: 'FEATURED PROJECTS',
-      pos: [1.47, -1.5], look: [3.05, 2.4, -4.55], guide: [1.88, 0.35],
+      pos: [2.45, 0.2], look: [3.05, 3.7, -4.55], guide: [0.9, -1.0],
       tags: [exhibits.docs, exhibits.security],
       speakerSay: "Now, here's my favorite part. These aren't just designs on a shelf.",
       exhibitSay: exhibits.docs + " lets you ask questions about documents while keeping the files on your device. " +
@@ -60,7 +60,7 @@ export function guidedTourPlan({ profile, projects, workbench, certificates, art
     },
     {
       id: 'certificates', title: 'Certificates and learning', category: 'ACHIEVEMENTS',
-      pos: [-3.37, -0.13], look: [-4.90, 3.63, 0.08], guide: [-2.48, 1.26],
+      pos: [-.1, -0.13], look: [-4.90, 3.63, 0.08], guide: [-1.95, 1.3],
       tags: [certificates.length + ' certificates', 'Google', 'IBM', 'Kaggle'],
       speakerSay: "See those frames on the wall? They're not just decoration.",
       exhibitSay: "They show what he's been learning—from Google Analytics and Python to artificial intelligence and cloud computing. You can open any certificate and look at the original.",
@@ -74,7 +74,7 @@ export function guidedTourPlan({ profile, projects, workbench, certificates, art
     },
     {
       id: 'contact', title: 'Experience and contact', category: 'WORK & CONTACT',
-      pos: [-1.1, 3.78], look: [1.4, 3.35, 4.95], guide: [0.69, 3.13],
+      pos: [1.2, -0.25], look: [0.15, 3.85, -4.95], guide: [2.8, -1.3],
       tags: ['Experience', 'Résumé', 'Contact'],
       speakerSay: "And if you see something that sparks an idea, you can reach out to him.",
       exhibitSay: "His résumé, experience, and links are all here. He's interested in practical dashboards, reporting systems, and digital tools that make a real difference.",
@@ -89,10 +89,10 @@ export function guidedTourPlan({ profile, projects, workbench, certificates, art
     {
       id: 'ready', title: 'Free exploration unlocked', category: 'YOUR TURN',
       pos: [3.9, 2.95], look: [3.6, 2.6, 1.35], guide: [1.19, 2.25],
-      tags: ['Mouse to look', 'WASD to move', 'E to interact'],
+      tags: ['Explore freely', 'Interact with objects'],
       speakerSay: "That's my tour. Now it's your turn!",
       exhibitSay: '',
-      outroSay: "Click Start Exploring, move your mouse to look around, use W, A, S, and D to walk, and press E when something catches your eye. Have fun!",
+      outroSay: "Select Start Exploring, and use your movement and look controls to explore. Tap or interact with anything that catches your eye. Have fun!",
     },
   ];
 

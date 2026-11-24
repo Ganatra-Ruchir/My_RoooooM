@@ -69,22 +69,23 @@
       <span id="tourBar"></span>
     </div>
     <div class="guided-tour-meta">
-      <span id="tourControlsLocked">Tour in progress · movement locked</span>
+      <span id="tourControlsLocked">Guided tour</span>
+      <button type="button" id="tourSkip">Skip tour</button>
       <button type="button" id="tourVoice" aria-label="Enable spoken guide narration"> <span aria-hidden="true">◉</span> Hear Meera</button>
     </div>
   </section>
   <section class="tour-finished" id="tourFinished" aria-label="Free exploration unlocked" hidden>
     <div>
       <strong>YOUR TURN. EXPLORE FREELY.</strong>
-      <span>WASD to move · Move mouse to look · E to interact</span>
-      <label class="mouse-setting" for="mouseSensitivity">Mouse speed
+      <span id="tourInstruction">WASD to move · Mouse to look · E to interact</span>
+      <label class="mouse-setting" for="mouseSensitivity"><span id="mouseSensitivityLabel">Mouse speed</span>
         <input type="range" id="mouseSensitivity" data-look-sensitivity min="0.35" max="2.5" step="0.05" value="1" aria-label="Mouse sensitivity">
         <output id="mouseSensitivityValue">1.0×</output>
       </label>
       <label class="mouse-invert"><input type="checkbox" id="invertMouse"> Invert vertical look</label>
     </div>
     <button type="button" id="tourExploreBtn">▶ Start Exploring</button>
-    <button type="button" class="ghost-btn" data-local-avatar>Load Ruchir VRM locally</button>
+    <button type="button" class="ghost-btn local-avatar-link" data-local-avatar>Private avatar settings</button>
   </section>
   <button class="prompt" id="prompt" type="button" hidden><kbd>E</kbd><span id="promptText"></span></button>
 

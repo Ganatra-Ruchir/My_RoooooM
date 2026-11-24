@@ -28,9 +28,14 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance' });
   const lowPower = matchMedia('(pointer: coarse)').matches || (navigator.deviceMemory && navigator.deviceMemory < 4);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, lowPower ? 1.1 : 1.65));
+  const pixelLimit = lowPower ? 1 : 1.65;
+  let renderScale = Math.min(window.devicePixelRatio || 1,pixelLimit);
+  renderer.setPixelRatio(renderScale);
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = lowPower ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
+  // On a phone, refresh the expensive shadow pass at most six times a second.
+  renderer.shadowMap.autoUpdate = !lowPower;
+  renderer.shadowMap.needsUpdate = true;
   renderer.toneMapping = THREE.AgXToneMapping || THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
   renderer.setClearColor(0x000000, 0);
@@ -43,6 +48,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     const env = new RoomEnvironment();
     const result = pmrem.fromScene(env, .04);
     scene.environment = result.texture;
+    scene.environmentIntensity = .36;
     env.dispose(); pmrem.dispose();
   } catch (err) { console.warn('Indoor reflection environment unavailable',err); }
   const camera = new THREE.PerspectiveCamera(32, 1, 0.065, 200);
@@ -120,28 +126,36 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   // CC0 photographic material maps, loaded lazily with existing local
   // surfaces as fallback. Normal and roughness data are linear, not sRGB.
   const pbrLoader=new THREE.TextureLoader();
-  const pbrCache=new Map();
+  const pbrCache=new Map(), rawPbrCache=new Map();
   function pbrMap(id,kind,rx,ry){
     const key=[id,kind,rx,ry].join(':');
     if(!pbrCache.has(key)){
+      const rawKey=id+':'+kind;
       const url='https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/'+id+'/'+id+'_'+kind+'_1k.jpg';
-      pbrCache.set(key,new Promise(resolve=>{
-        pbrLoader.load(url,t=>{
-          t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(rx,ry);
-          t.colorSpace=kind==='diff'?THREE.SRGBColorSpace:THREE.NoColorSpace;
-          t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());
-          resolve(t);
-        },undefined,()=>resolve(null));
+      if(!rawPbrCache.has(rawKey))rawPbrCache.set(rawKey,new Promise(resolve=>{
+        pbrLoader.load(url,t=>resolve(t),undefined,()=>resolve(null));
+      }));
+      pbrCache.set(key,rawPbrCache.get(rawKey).then(source=>{
+        if(!source)return null;
+        const t=source.clone(); t.needsUpdate=true;
+        t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(rx,ry);
+        t.colorSpace=kind==='diff'?THREE.SRGBColorSpace:THREE.NoColorSpace;
+        t.anisotropy=Math.min(lowPower?2:8,renderer.capabilities.getMaxAnisotropy());
+        return t;
       }));
     }
     return pbrCache.get(key);
   }
   function photograph(material,id,rx,ry,{color=true,normal=.45,rough=true}={}){
-    const maps=[['normalMap','nor_gl'],...(color?[['map','diff']]:[]),...(rough?[['roughnessMap','rough']]:[])];
+    // The procedural fallback has actual fine bump response, not flat paint.
+    if(material.map && material.normalScale) {
+      material.bumpMap=material.map; material.bumpScale=.018*normal;
+    }
+    const maps=[['normalMap','nor_gl'],...(color?[['map','diff']]:[]),...(rough&&!lowPower?[['roughnessMap','rough']]:[])];
     for(const [prop,kind] of maps)pbrMap(id,kind,rx,ry).then(t=>{
       if(!t){ console.warn('Room material unavailable:',id,kind); return; }
       material[prop]=t;
-      if(prop==='normalMap')material.normalScale.set(normal,normal);
+      if(prop==='normalMap'){material.normalScale.set(normal,normal);material.bumpMap=null;}
       material.needsUpdate=true;
     });
     return material;
@@ -295,8 +309,8 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   // ---------- Window with day / night sky ----------
   const winCx = (W_IN.x0 + W_IN.x1) / 2, winCy = (W_IN.y0 + W_IN.y1) / 2;
   const winW = W_IN.x1 - W_IN.x0, winH = W_IN.y1 - W_IN.y0;
-  const skyDay = new THREE.MeshBasicMaterial({ map: TX.skyTexture(false), toneMapped: false });
-  const skyNight = new THREE.MeshBasicMaterial({ map: TX.skyTexture(true), toneMapped: false, transparent: true, opacity: 0 });
+  const skyDay = new THREE.MeshBasicMaterial({ map: TX.gardenTexture(false), toneMapped: false });
+  const skyNight = new THREE.MeshBasicMaterial({ map: TX.gardenTexture(true), toneMapped: false, transparent: true, opacity: 0 });
   mesh(new THREE.PlaneGeometry(winW + 1.4, winH + 1.2), skyDay, winCx, winCy, -5.9, scene, { cast: false, receive: false });
   mesh(new THREE.PlaneGeometry(winW + 1.4, winH + 1.2), skyNight, winCx, winCy, -5.89, scene, { cast: false, receive: false });
   const frameMat = std(0x292826, { roughness: 0.5 });
@@ -306,7 +320,8 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   mesh(box(0.12, winH, 0.12), frameMat, W_IN.x1 + 0.06, winCy, -4.97);
   mesh(box(0.05, winH, 0.06), frameMat, winCx, winCy, -5.15);
   mesh(box(winW, 0.05, 0.06), frameMat, winCx, winCy + 0.2, -5.15);
-  const glass = new THREE.MeshStandardMaterial({ color: 0xcfe3ff, transparent: true, opacity: 0.12, roughness: 0.05, metalness: 0.1 });
+  for(const yy of [winCy-.62,winCy+.88])mesh(box(winW,.045,.06),frameMat,winCx,yy,-5.15);
+  const glass = new THREE.MeshStandardMaterial({ color: 0xcfe3ff, transparent: true, opacity: 0.08, roughness: 0.11, metalness: 0.1 });
   const glassPane = mesh(new THREE.PlaneGeometry(winW, winH), glass, winCx, winCy, -5.16, scene, { cast: false, receive: false });
   glassPane.raycast = () => {};
   // curtains
@@ -405,13 +420,20 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   const shelf = new THREE.Group();
   shelf.position.set(3.0, 0, -4.62);
   scene.add(shelf);
-  const wood = photograph(std(0xaea09a, { roughness: 0.7 }), 'dark_wood', 1, 2, {normal:.42});
+  const wood = photograph(std(0x8a7565, { map:TX.fineWoodTexture(), roughness: 0.72 }), 'dark_wood', 1, 2, {normal:.55});
   const SW = 3.4, SD = 0.7, SH = 4.4, st = 0.08;
   mesh(box(st, SH, SD), wood, -SW / 2 + st / 2, SH / 2, 0, shelf);
   mesh(box(st, SH, SD), wood, SW / 2 - st / 2, SH / 2, 0, shelf);
-  mesh(box(SW, SH, 0.04), std(0x5e3b26), 0, SH / 2, -SD / 2 + 0.02, shelf);
+  mesh(box(SW, SH, 0.04), std(0x302621,{map:TX.fineWoodTexture(),roughness:.85}), 0, SH / 2, -SD / 2 + 0.02, shelf);
+  // Recessed shelving, substantial face frames and a plinth give the cabinet depth.
+  for(const x of [-SW/2+0.055, SW/2-0.055])mesh(rbox(.105,SH,.11,.015),wood,x,SH/2,SD/2+.015,shelf);
+  mesh(rbox(SW+.12,.16,SD+.12,.022),wood,0,SH+.025,0,shelf);
+  mesh(rbox(SW+.08,.13,SD+.05,.018),wood,0,.085,0,shelf);
   const levels = [0.06, 1.12, 2.18, 3.24, 4.36];
-  levels.forEach((y) => mesh(box(SW, st, SD), wood, 0, y, 0, shelf));
+  levels.forEach((y) => {
+    mesh(box(SW, st, SD), wood, 0, y, 0, shelf);
+    mesh(rbox(SW,.105,.065,.012),wood,0,y,SD/2,shelf);
+  });
   const levelTop = (k) => levels[k] + st / 2;
 
   // featured projects: boxed like collector editions
@@ -420,18 +442,20 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   data.projects.forEach((p, i) => {
     const [x, lv] = slots[i];
     const w = 0.94, h = 0.86, d = 0.46;
-    const side = std(new THREE.Color(p.color).multiplyScalar(0.7), { roughness: 0.6 });
+    const side = std(new THREE.Color(p.color).lerp(new THREE.Color(0x241f1b),.72), { map:fabricGrain, bumpMap:fabricGrain,bumpScale:.008, roughness: 0.85 });
     const front = new THREE.MeshStandardMaterial({ map: TX.projectBoxTexture(p, i), roughness: 0.55 });
-    const top = std(new THREE.Color(p.color).multiplyScalar(0.85), { roughness: 0.6 });
+    const top = std(0xb8a995,{map:TX.paperEdgesTexture(),roughness:.92});
     const root = new THREE.Group();
     root.position.set(x, levelTop(lv) + h / 2 + 0.001, SD / 2 - d / 2 - 0.06);
     shelf.add(root);
     mesh(box(w, h, d), [side, side, top, side, front, side], 0, 0, 0, root);
+    // Fine binding ridges and cover overhang; labels remain clickable.
+    for(const yy of [-h/2+.012,h/2-.012])mesh(box(w+.018,.024,d+.018),side,0,yy,0,root,{cast:false});
     register(root, { kind: 'project', index: i, label: p.title + ' — ' + p.hook }, { dir: new THREE.Vector3(0, 0, 1), selectOffset: 0.42, hoverOffset: 0.08 });
     projectRoots.push(root);
   });
   // workbench builds: binders with spines
-  const binderColors = ['#2f5d8a', '#c2562f', '#2e5b52', '#d7a04a', '#6b4c9a', '#9a3f52', '#3f6fd8', '#5f7f64', '#b5762f', '#20665a'];
+  const binderColors = ['#34424a','#64483b','#414f43','#6c583f','#453d45','#58383c','#374858','#55594b','#66513f','#394b48'];
   const heights = [0.84, 0.8, 0.88, 0.78, 0.86, 0.82, 0.9, 0.8, 0.85, 0.83];
   const buildRoots = [];
   data.workbench.forEach((b, i) => {
@@ -439,7 +463,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     const col = binderColors[i % binderColors.length];
     const sideM = std(new THREE.Color(col).multiplyScalar(0.8));
     const spineM = new THREE.MeshStandardMaterial({ map: TX.spineTexture({ title: b.title, color: col, number: String(i + 1).padStart(2, '0'), light: col === '#d7a04a' }), roughness: 0.7 });
-    const pages = std(0xf3ead8);
+    const pages = std(0xbfb29b,{map:TX.paperEdgesTexture(),roughness:.92});
     const root = new THREE.Group();
     root.position.set(-1.35 + i * 0.3, levelTop(1) + h / 2 + 0.001, SD / 2 - d / 2 - 0.05);
     shelf.add(root);
@@ -481,7 +505,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
 
   // ---------- Desk ----------
   const DESK = { x: -0.8, y: 1.45, z: -1.65, w: 2.9, d: 1.3 };
-  const oak = photograph(std(0xb9a493, { roughness: 0.55 }), 'dark_wood', 2, 1, {normal:.38});
+  const oak = photograph(std(0x927966, { map:TX.fineWoodTexture(), roughness: 0.58 }), 'dark_wood', 2, 1, {normal:.5});
   const black = std(0x222326, { roughness: 0.5, metalness: 0.3 });
   mesh(rbox(DESK.w, 0.08, DESK.d, 0.025), oak, DESK.x, DESK.y, DESK.z);
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) mesh(box(0.06, DESK.y - 0.04, 0.06), black, DESK.x + sx * (DESK.w / 2 - 0.1), (DESK.y - 0.04) / 2, DESK.z + sz * (DESK.d / 2 - 0.1));
@@ -679,7 +703,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   walkRing.raycast = () => {};
 
   // ---------- Decor ----------
-  const rugMaterial = photograph(std(0x8d7862, {map: fabricGrain, roughness: 1}), 'rough_linen', 9, 8, {color:false,normal: .85, rough:true});
+  const rugMaterial = photograph(std(0x9e8a72, {map: TX.wovenTexture(), roughness: 1}), 'rough_linen', 9, 8, {color:false,normal: .85, rough:true});
   const rug = mesh(new THREE.PlaneGeometry(4.25, 3.75), rugMaterial, 1.5, 0.014, 1.6, scene, { cast: false });
   rug.rotation.x = -Math.PI / 2;
   const loungeFabric = photograph(new THREE.MeshPhysicalMaterial({
@@ -698,12 +722,9 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   const pillow=mesh(rbox(.46,.42,.18,.08),std(0x49372d,{map:fabricGrain,roughness:.94}),.12,.89,-.23,chair); pillow.rotation.z=-.12;
   // low coffee table on the rug with a stack of webtoon comics and a sketch pad
   const tableG = new THREE.Group(); tableG.position.set(0.7, 0, 1.0); tableG.rotation.y = 0.25; scene.add(tableG);
-  mesh(new THREE.CylinderGeometry(0.62, 0.62, 0.07, 36), oak, 0, 0.5, 0, tableG);
-  for (let k = 0; k < 3; k++) {
-    const a = (k / 3) * Math.PI * 2;
-    const leg = mesh(new THREE.CylinderGeometry(0.03, 0.025, 0.5, 8), black, Math.cos(a) * 0.42, 0.25, Math.sin(a) * 0.42, tableG);
-    leg.rotation.set(Math.sin(a) * 0.12, 0, -Math.cos(a) * 0.12);
-  }
+  mesh(rbox(1.02,.13,.86,.035),oak,0,.47,0,tableG);
+  mesh(rbox(.75,.37,.58,.02),wood,0,.22,0,tableG);
+  mesh(rbox(.81,.055,.65,.02),black,0,.033,0,tableG);
   ['#f2c14e', '#e85d75', '#4ea5d9', '#2a211b'].forEach((c, k) => {
     const comic = mesh(box(0.36, 0.035, 0.5), std(c, { roughness: 0.6 }), -0.18, 0.555 + k * 0.036, 0.05, tableG);
     comic.rotation.y = (k - 1.5) * 0.12;
@@ -782,7 +803,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     color: 0xffd6a8, size: 0.035, transparent: true, opacity: 0.16,
     depthWrite: false, map: TX.softDotTexture(), sizeAttenuation: true,
   }));
-  dust.raycast = () => {}; scene.add(dust);
+  dust.raycast = () => {}; if(!lowPower)scene.add(dust);
 
   // Warm practical lighting on real geometry, with a cool window key.
   const practicalLights = [];
@@ -809,7 +830,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   floorLamp.position.set(4.25,2.25,3.65); scene.add(floorLamp);
   addObstacle([4.25,3.65,.26]);
   const DAY = { hemi: 0.65, hemiSky: new THREE.Color(0xdce4e5), hemiGround: new THREE.Color(0x726050), sun: 1.7, sunCol: new THREE.Color(0xe6efff), fill: 0.32, lamp: 4, neon: 0.2, screen: 0.32, bulb: 0.6, gallery: 0.8, exposure: 1.13, pic: 1 };
-  const NIGHT = { hemi: 0.43, hemiSky: new THREE.Color(0x8697a7), hemiGround: new THREE.Color(0x60483b), sun: 0.32, sunCol: new THREE.Color(0xb1c9df), fill: 0.22, lamp: 16, neon: 0.45, screen: 0.8, bulb: 2, gallery: 1.4, exposure: 1.3, pic: 1 };
+  const NIGHT = { hemi: 0.34, hemiSky: new THREE.Color(0x96a7b3), hemiGround: new THREE.Color(0x60483b), sun: 0.24, sunCol: new THREE.Color(0xb1c9df), fill: 0.17, lamp: 14, neon: 0.32, screen: 0.65, bulb: 1.2, gallery: 1.0, exposure: 1.16, pic: 1 };
   let nightTarget = 0, night = 0;
   function applyNight(n) {
     const L = (a, b) => a + (b - a) * n;
@@ -902,7 +923,8 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   let tween = null;
   const ease = (k) => (k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2);
   const viewFov = () => (camera.aspect < 0.8 ? 38 : 26);
-  const fpFov = () => (camera.aspect < 0.8 ? 79 : 80);
+  // Preserve useful horizontal view in portrait rather than a narrow slit.
+  const fpFov = () => camera.aspect < .8 ? Math.min(112,THREE.MathUtils.radToDeg(2*Math.atan(Math.tan(THREE.MathUtils.degToRad(31))/camera.aspect))) : 76;
   function flyTo(view, dur = 1.2) {
     const { pos, target } = view;
     if (reducedMotion || dur === 0) {
@@ -924,7 +946,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   function applyMouseLook(dx, dy) {
     if (mode !== 'follow' || talking || guided.active) return;
     lookGoal = null;
-    const f = 0.00185 * lookSensitivity;
+    const f = (lowPower ? 0.0032 : 0.00185) * lookSensitivity;
     cam.yaw -= THREE.MathUtils.clamp(dx, -140, 140) * f;
     cam.pitch = THREE.MathUtils.clamp(cam.pitch -
       THREE.MathUtils.clamp(dy, -140, 140) * f * (invertLookY ? -1 : 1), -1.15, 1.05);
@@ -958,7 +980,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     if (mode !== 'follow') setMode('follow');
     guided.active = true;
     guided.index = 0; guided.elapsed = 0; guided.total = 0;
-    guided.beat = 'travel'; guided.fov = 80;
+    guided.beat = 'travel'; guided.fov = fpFov();
     fp.blend = 1; // absolutely no old overview-camera interpolation during the tour
     guided.from.set(player.pos.x, player.pos.z);
     guided.last.copy(guided.from);
@@ -1022,7 +1044,13 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     // Frame head AND shoulders; don't move the camera inside the head mesh.
     guided.face.y -= 0.13;
     const target = new THREE.Vector3(stop.look[0], stop.look[1], stop.look[2]);
-    if (stop.id === 'about') { ruchirHead(target); target.y -= .15; }
+    if (stop.id === 'about') { ruchirHead(target); target.y -= .25; }
+    if (stop.id === 'projects' && projectRoots.length>1) {
+      target.copy(projectRoots[0].getWorldPosition(new THREE.Vector3())).lerp(projectRoots[1].getWorldPosition(new THREE.Vector3()),.5);
+    }
+    if (stop.id === 'contact') neon.getWorldPosition(target);
+    // Look lower on exhibits so they remain between the top HUD and captions.
+    if (stop.id==='certificates')target.y=3.55;
     const hasExhibit = !!stop.exhibitSay;
     if (guided.beat === 'travel' && guided.elapsed >= stop.speakerStart) {
       guided.beat = 'speaker';
@@ -1053,13 +1081,16 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
       guided.face.x - player.pos.x, guided.face.z - player.pos.z));
     // Calibrated per shot distance: a close head-and-shoulders portrait,
     // not a giant distorted face covering the whole screen.
+    const portrait = camera.aspect < .8;
     const faceFov = THREE.MathUtils.clamp(
-      THREE.MathUtils.radToDeg(2 * Math.atan(1.72 / (2 * faceDistance))), 34, 58);
-    const exhibitDistance = Math.hypot(target.x - player.pos.x, target.z - player.pos.z);
-    const exhibitFov = THREE.MathUtils.clamp(68 - Math.max(0, exhibitDistance - 2.4) * 4.2, 42, 66);
+      THREE.MathUtils.radToDeg(2 * Math.atan((portrait?2.7:1.9) / (2 * faceDistance))), portrait?68:40, portrait?100:68);
+    const exhibitDistance = Math.max(.65,Math.hypot(target.x - player.pos.x, target.z - player.pos.z));
+    const width = ({certificates:5.4,projects:2.9,workbench:3.5,tools:3.6,contact:2.7,about:2.1,articles:2.8,interactive:2.5})[stop.id]||2.4;
+    const fitFov=THREE.MathUtils.radToDeg(2*Math.atan(width/(2*exhibitDistance*Math.max(.4,camera.aspect))));
+    const exhibitFov = THREE.MathUtils.clamp(Math.max(portrait?75:48,fitFov),portrait?75:48,portrait?112:87);
     const zoomIn = ease(Math.max(0, Math.min(1,
       (guided.elapsed - stop.travelSeconds * 0.45) / (stop.travelSeconds * 0.55))));
-    const faceShotFov = THREE.MathUtils.lerp(78, faceFov, zoomIn);
+    const faceShotFov = THREE.MathUtils.lerp(fpFov(), faceFov, zoomIn);
     const desiredFov = THREE.MathUtils.lerp(faceShotFov, exhibitFov, revealBlend);
     guided.fov = THREE.MathUtils.damp(guided.fov, desiredFov, 3.6, dt);
   }
@@ -1106,7 +1137,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     if (!talking && canWalk() && input.turn) { cam.yaw += input.turn * 2.1 * dt; lookGoal = null; }
     cam.pitch = THREE.MathUtils.clamp(cam.pitch, -1.15, 1.05);
     fp.bob += dt * player.speed * 2.6;
-    const bobY = Math.sin(fp.bob * 2) * 0.04 * Math.min(1, player.speed / 2.6);
+    const bobY = Math.sin(fp.bob * 2) * (lowPower?.008:.022) * Math.min(1, player.speed / 2.6);
     fpPos.set(player.pos.x, EYE + bobY, player.pos.z);
     fpEuler.set(cam.pitch, cam.yaw, 0);
     fpQuat.setFromEuler(fpEuler);
@@ -1139,7 +1170,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   let W = 1, H = 1;
   function applyViewOffset() {
     // Inset offsets are only for interactive side drawers, never for a tour.
-    if (guided.active || (Math.abs(inset.x) < 0.5 && Math.abs(inset.y) < 0.5)) camera.clearViewOffset();
+    if (guided.active || (Math.abs(inset.x) < 0.5 && Math.abs(inset.y) < 0.5)) { if(camera.view?.enabled)camera.clearViewOffset(); }
     else camera.setViewOffset(W, H, inset.x, inset.y, W, H);
   }
   function resize() {
@@ -1186,7 +1217,8 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   const pointers = new Map();
   canvas.addEventListener('pointerdown', (e) => {
     if (guided.active) return;
-    down = { x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, t: performance.now() };
+    if(down && down.id!==e.pointerId)return;
+    down = { id:e.pointerId,x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, t: performance.now(), dragged:false };
     lastFreePointer = { x: e.clientX, y: e.clientY };
     if (e.pointerType !== 'mouse' && canvas.setPointerCapture) {
       try { canvas.setPointerCapture(e.pointerId); } catch { /* pointer may be cancelled */ }
@@ -1198,11 +1230,12 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     if (guided.active) return;
     if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (document.pointerLockElement === canvas) return; // mouse look is handled by look()
-    if (mode === 'follow' && down && (e.buttons || e.pointerType !== 'mouse') && pointers.size === 1 && !talking) {
+    if (mode === 'follow' && down && down.id===e.pointerId && (e.buttons || e.pointerType !== 'mouse') && !talking) {
       lookGoal = null;
       // One-to-one horizontal and vertical swipe, including on touchscreens.
       // Drag left = look left, drag up = look up. No mouse wheel required.
-      applyMouseLook(e.clientX - down.lx, e.clientY - down.ly);
+      if(Math.hypot(e.clientX-down.x,e.clientY-down.y)>5)down.dragged=true;
+      if(down.dragged)applyMouseLook(e.clientX - down.lx, e.clientY - down.ly);
       if (e.pointerType === 'touch' && e.cancelable) e.preventDefault();
       down.lx = e.clientX; down.ly = e.clientY;
       setHovered(null, e);
@@ -1231,13 +1264,15 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     if (mode === 'follow' && e.cancelable) e.preventDefault();
   }, { passive: false });
   const endPointer = (e) => { pointers.delete(e.pointerId); if (pointers.size < 2) pinchD = 0; };
-  canvas.addEventListener('pointercancel', endPointer);
+  const cancelPointer=e=>{endPointer(e);if(down?.id===e.pointerId)down=null;};
+  canvas.addEventListener('pointercancel', cancelPointer);
+  canvas.addEventListener('lostpointercapture',cancelPointer);
   canvas.addEventListener('pointerup', (e) => {
     if (guided.active) return;
     endPointer(e);
     lastFreePointer = { x: e.clientX, y: e.clientY };
-    if (!down) return;
-    const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
+    if (!down || down.id!==e.pointerId) return;
+    const moved = down.dragged ? Infinity : Math.hypot(e.clientX - down.x, e.clientY - down.y);
     const quick = performance.now() - down.t < 600;
     down = null;
     if (moved > 6 || !quick) return;
@@ -1273,7 +1308,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
         else { const s = Math.min(1, d / 0.5); mx = (dx / d) * s; mz = (dz / d) * s; }
       }
     } else player.target = null;
-    const maxSpeed = input.run ? 3.25 : 1.85;
+    const maxSpeed = input.run ? 3.0 : (lowPower?1.65:1.85);
     player.vel.x = THREE.MathUtils.damp(player.vel.x, mx * maxSpeed, 18, dt);
     player.vel.z = THREE.MathUtils.damp(player.vel.z, mz * maxSpeed, 18, dt);
     before.copy(player.pos);
@@ -1302,7 +1337,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
       visitor.root.rotation.y = player.yaw;
     }
     player.speed = speed;
-    visitor.update(t, dt, speed / 2.6);
+    if(visitor.root.visible)visitor.update(t, dt, speed / 2.6);
     walkRing.material.opacity = THREE.MathUtils.damp(walkRing.material.opacity, player.target ? 0.85 : 0, 10, dt);
     if (player.target) { walkRing.position.set(player.target.x, 0.03, player.target.z); walkRing.scale.setScalar(1 + Math.sin(t * 6) * 0.12); }
   }
@@ -1343,10 +1378,10 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   function updatePrompt(dt) {
     promptT -= dt;
     if (promptT > 0) return;
-    promptT = 0.1;
+    promptT = lowPower ? .28 : .12;
     let best = null, bestScore = Infinity;
     // first person: whatever the crosshair points at (within reach) wins
-    if (canWalk() && mode === 'follow' && fp.blend >= 1) {
+    if (!lowPower && canWalk() && mode === 'follow' && fp.blend >= 1) {
       raycaster.setFromCamera(CENTER, camera);
       const h = raycaster.intersectObjects(scene.children, true).find((x) => shown(x.object));
       if (h && h.distance < 4.5) {
@@ -1391,7 +1426,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
       wChars += dt * 30;
       if (wChars >= full.length) { wChars = full.length; wPause = 2.5; }
     }
-    if (t - lastDraw > 0.07) { lastDraw = t; screen.draw(a.title, full.slice(0, wChars | 0), Math.floor(t * 2.2) % 2 === 0); }
+    if (t - lastDraw > (lowPower?.32:.12)) { lastDraw = t; screen.draw(a.title, full.slice(0, wChars | 0), Math.floor(t * 2.2) % 2 === 0); }
   }
   function updateClock() {
     const now = new Date();
@@ -1405,11 +1440,22 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   let running = false;
   let wasNear = false, greetUntil = 0;
   const visitorHead = new THREE.Vector3();
-  let simT = 0;
+  let simT = 0, lastFrame=0, perfElapsed=0, perfFrames=0,lastShadow=0;
   function frame() {
     if (!running) return;
     requestAnimationFrame(frame);
-    tick(Math.min(clockT.getDelta(), 0.05), true);
+    const now=performance.now(), elapsed=lastFrame?Math.min(.12,(now-lastFrame)/1000):1/60;
+    lastFrame=now;
+    // Adapt resolution to sustained frame rate rather than sacrifice input response.
+    perfElapsed+=elapsed;perfFrames++;
+    if(lowPower && perfElapsed>2.5){
+      const fps=perfFrames/perfElapsed;
+      const next=fps<26?Math.max(.65,renderScale-.1):fps>49?Math.min(pixelLimit,renderScale+.05):renderScale;
+      if(Math.abs(next-renderScale)>.02){renderScale=next;renderer.setPixelRatio(renderScale);renderer.setSize(W,H,false);}
+      perfElapsed=0;perfFrames=0;
+    }
+    if(lowPower && now-lastShadow>180){renderer.shadowMap.needsUpdate=true;lastShadow=now;}
+    tick(elapsed,true);
   }
   function tick(dt, draw) {
     const t = (simT += dt);
@@ -1455,6 +1501,11 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     wasNear = near;
     if (mode === 'follow') visitorHead.copy(camera.position); else visitor.head.getWorldPosition(visitorHead);
     const npcMove = (state) => state === 'roam' ? 'Walk' : state === 'greet' ? 'Wave' : state === 'converse' ? 'Talk' : state === 'observe' ? 'Think' : 'Idle';
+    if(ruchir.real && (near || talking || (guided.active && tourPlan[guided.index]?.id==='about'))){
+      const root=ruchir.real.root;
+      const yaw=Math.atan2(player.pos.x-root.position.x,player.pos.z-root.position.z);
+      root.rotation.y+=shortestAngle(root.rotation.y,yaw)*Math.min(1,dt*4);
+    }
     realCharacters.update(t, dt, {
       ruchir: talking ? 'Talk' : t < greetUntil ? 'Wave' : 'Idle',
       maya: guided.active ? (npcSystem.getState(0) === 'roam' ? 'Walk' :
@@ -1550,6 +1601,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     // game controls
     whenGuideReady() { return guideReady; },
     startGuidedTour: beginGuidedTour,
+    skipGuidedTour(){if(guided.active)finishGuidedTour();},
     get isTouring() { return guided.active; },
     get tourFinished() { return guided.finished; },
     get tourProgress() { return guided.active ? Math.min(1, guided.total / tourLength) : Number(guided.finished); },

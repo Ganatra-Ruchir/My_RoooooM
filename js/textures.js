@@ -50,14 +50,14 @@ export function floorTexture() {
     let px = -r() * 400;
     while (px < 1024) {
       const len = 260 + r() * 360;
-      const l = 0.5 + r() * 0.08;
+      const l = 0.27 + r() * 0.09;
       x.fillStyle = `hsl(${26 + r() * 6}, ${38 + r() * 10}%, ${l * 100}%)`;
       x.fillRect(px, i * rh, len, rh);
       // grain
       x.globalAlpha = 0.08;
-      for (let g = 0; g < 7; g++) {
+      for (let g = 0; g < 34; g++) {
         x.strokeStyle = r() > 0.5 ? '#5a3a22' : '#f3d2a6';
-        x.lineWidth = 1 + r();
+        x.lineWidth = .35 + r()*.8;
         x.beginPath();
         const gy = i * rh + 3 + r() * (rh - 6);
         x.moveTo(px, gy);
@@ -142,11 +142,12 @@ export function skyTexture(night) {
 export function spineTexture({ title, color, number, w = 128, h = 512, light = false }) {
   const [c, x] = canvas(w, h);
   x.fillStyle = color; x.fillRect(0, 0, w, h);
+  fiber(x,w,h,37,.22);
   const g = x.createLinearGradient(0, 0, w, 0);
   g.addColorStop(0, 'rgba(0,0,0,.25)'); g.addColorStop(0.15, 'rgba(255,255,255,.08)');
   g.addColorStop(0.85, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,.25)');
   x.fillStyle = g; x.fillRect(0, 0, w, h);
-  const ink = light ? '#2a211b' : '#fdf6ea';
+  const ink = light ? '#2a211b' : '#ded1b4';
   x.fillStyle = ink; x.globalAlpha = 0.85;
   x.fillRect(0, 26, w, 6); x.fillRect(0, h - 34, w, 6);
   x.globalAlpha = 1;
@@ -168,11 +169,13 @@ export function spineTexture({ title, color, number, w = 128, h = 512, light = f
 export function projectBoxTexture(p, i) {
   const [c, x] = canvas(512, 460);
   const g = x.createLinearGradient(0, 0, 512, 460);
-  g.addColorStop(0, shade(p.color, 0.08)); g.addColorStop(1, shade(p.color, -0.12));
+  const muted='#'+new THREE.Color(p.color).lerp(new THREE.Color(0x261f1b),.7).getHexString();
+  g.addColorStop(0, shade(muted, 0.015)); g.addColorStop(1, shade(muted, -0.12));
   x.fillStyle = g; x.fillRect(0, 0, 512, 460);
-  // pattern
-  x.strokeStyle = 'rgba(255,255,255,.08)'; x.lineWidth = 2;
-  for (let k = -460; k < 512; k += 28) { x.beginPath(); x.moveTo(k, 460); x.lineTo(k + 460, 0); x.stroke(); }
+  // Restrained clothbound cover, fine fiber and gold-stamped rules.
+  fiber(x,512,460,118,.3);
+  x.strokeStyle='rgba(197,166,114,.65)';x.lineWidth=1.5;x.strokeRect(13,13,486,434);
+  x.strokeStyle='rgba(197,166,114,.28)';x.strokeRect(19,19,474,422);
   x.fillStyle = 'rgba(0,0,0,.18)'; x.fillRect(0, 360, 512, 100);
   x.fillStyle = '#fff8ec';
   x.font = `700 30px ${FONT_UI}`;
@@ -182,7 +185,7 @@ export function projectBoxTexture(p, i) {
   const tw = x.measureText(tag).width + 28;
   x.fillStyle = 'rgba(255,248,236,.92)';
   roundRect(x, 512 - tw - 30, 36, tw, 36, 18); x.fill();
-  x.fillStyle = shade(p.color, -0.2); x.fillText(tag, 512 - tw - 16, 61);
+  x.fillStyle = '#362c24'; x.fillText(tag, 512 - tw - 16, 61);
   x.fillStyle = '#fff8ec';
   let size = 64; x.font = `600 ${size}px ${FONT_DISPLAY}`;
   let lines = wrapLines(x, p.title, 440);
@@ -434,4 +437,65 @@ function roundRect(x, l, t, w, h, r) {
   x.beginPath();
   x.moveTo(l + r, t); x.arcTo(l + w, t, l + w, t + h, r); x.arcTo(l + w, t + h, l, t + h, r);
   x.arcTo(l, t + h, l, t, r); x.arcTo(l, t, l + w, t, r); x.closePath();
+}
+
+// Locally generated high-frequency surface fallbacks; photographic maps can supersede them.
+function fiber(ctx,w,h,seed,alpha) {
+  const r=rng(seed);
+  ctx.save();ctx.globalAlpha=alpha;
+  for(let y=0;y<h;y+=3){
+    ctx.fillStyle=r()>.5?'#c1a78b':'#201a16';ctx.fillRect(0,y,w,1);
+  }
+  for(let x=0;x<w;x+=3){
+    ctx.fillStyle=r()>.5?'#bfb2a0':'#211a15';ctx.fillRect(x,0,1,h);
+  }
+  ctx.restore();
+}
+let woodFallback, paperFallback, wovenFallback;
+export function fineWoodTexture(){
+  if(woodFallback)return woodFallback;
+  const [c,x]=canvas(512,512),r=rng(318);
+  x.fillStyle='#aa8a70';x.fillRect(0,0,512,512);
+  for(let y=0;y<512;y++){
+    x.strokeStyle=r()>.44?'rgba(59,32,20,.27)':'rgba(245,218,183,.28)';
+    x.lineWidth=.35+r()*.85;x.beginPath();
+    x.moveTo(0,y);for(let i=0;i<=512;i+=8)x.lineTo(i,y+Math.sin(i*.021+y*.047)*2.1+Math.sin(i*.008+y*.1)*3.4);
+    x.stroke();
+  }
+  return woodFallback=toTexture(c,{repeat:[1,1]});
+}
+export function paperEdgesTexture(){
+  if(paperFallback)return paperFallback;
+  const [c,x]=canvas(128,256),r=rng(55);x.fillStyle='#e3d5bc';x.fillRect(0,0,128,256);
+  for(let y=0;y<256;y+=2){x.fillStyle=r()>.5?'#bead91':'#d1c0a4';x.fillRect(0,y,128,1);}
+  return paperFallback=toTexture(c);
+}
+export function wovenTexture(){
+  if(wovenFallback)return wovenFallback;
+  const [c,x]=canvas(512,512),r=rng(58);x.fillStyle='#b8a58b';x.fillRect(0,0,512,512);
+  for(let yy=0;yy<512;yy+=4)for(let xx=0;xx<512;xx+=4){
+    const v=145+Math.floor(r()*65);x.fillStyle='rgb('+v+','+(v-11)+','+(v-27)+')';
+    x.fillRect(xx,yy,3,3);x.fillStyle='#806d56';x.fillRect(xx,yy+3,3,1);
+  }
+  return wovenFallback=toTexture(c,{repeat:[4,4]});
+}
+export function gardenTexture(night){
+  const [c,x]=canvas(512,512),r=rng(8151);
+  const gradient=x.createLinearGradient(0,0,0,512);
+  gradient.addColorStop(0,night?'#30404a':'#9babac');gradient.addColorStop(1,night?'#151f1c':'#485c48');
+  x.fillStyle=gradient;x.fillRect(0,0,512,512);
+  // Layered, soft foliage beyond the window; a background surface, not a room screenshot.
+  for(let layer=0;layer<3;layer++){
+    for(let i=0;i<14;i++){
+      const bx=r()*512,by=580,top=35+r()*300;
+      x.strokeStyle=night?'#30342c':'#555c4c';x.lineWidth=1+layer*1.8;x.beginPath();x.moveTo(bx,by);x.lineTo(bx+(r()-.5)*65,top);x.stroke();
+    }
+    for(let i=0;i<850;i++){
+      const px=r()*512,py=r()*512,sz=1+r()*7;
+      const v=(night?25:65)+r()*(night?38:66)+layer*4;
+      x.fillStyle='rgba('+Math.round(v*.75)+','+Math.round(v)+','+Math.round(v*.75)+',.72)';
+      x.beginPath();x.ellipse(px,py,sz,sz*.45,r()*Math.PI,0,Math.PI*2);x.fill();
+    }
+  }
+  return toTexture(c);
 }

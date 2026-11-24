@@ -16,7 +16,7 @@ export function createControls({ room, ui }) {
       if (MOVE[k]) { x += MOVE[k][0]; y += MOVE[k][1]; }
       if (TURN[k]) turn += TURN[k];
     }
-    room.setInput({ x: Math.max(-1, Math.min(1, x + joy.x)), y: Math.max(-1, Math.min(1, y + joy.y)), turn: Math.max(-1, Math.min(1, turn)), run: keys.has('shift') || Math.hypot(joy.x, joy.y) > 0.92 });
+    room.setInput({ x: Math.max(-1, Math.min(1, x + joy.x)), y: Math.max(-1, Math.min(1, y + joy.y)), turn: Math.max(-1, Math.min(1, turn)), run: keys.has('shift') });
   }
 
   document.addEventListener('keydown', (e) => {
@@ -45,7 +45,7 @@ export function createControls({ room, ui }) {
   // ---------- Joystick ----------
   const base = document.getElementById('joy');
   const knob = document.getElementById('joyKnob');
-  const R = 46;
+  const R = 38;
   let active = null;
   function move(e) {
     const r = base.getBoundingClientRect();
@@ -53,10 +53,13 @@ export function createControls({ room, ui }) {
     const d = Math.hypot(dx, dy);
     if (d > R) { dx = (dx / d) * R; dy = (dy / d) * R; }
     knob.style.transform = `translate(${dx}px, ${dy}px)`;
-    joy.x = dx / R; joy.y = -dy / R;
+    const norm=Math.min(1,Math.hypot(dx,dy)/R);
+    const strength=norm<.12?0:Math.pow((norm-.12)/.88,1.15);
+    const k=norm>0?strength/(norm*R):0;
+    joy.x=dx*k;joy.y=-dy*k;
     sync();
   }
-  base?.addEventListener('pointerdown', (e) => { active = e.pointerId; base.setPointerCapture(e.pointerId); base.classList.add('on'); move(e); ui.hideHelpSoon(); });
+  base?.addEventListener('pointerdown', (e) => { if(active!==null)return; e.preventDefault(); active = e.pointerId; base.setPointerCapture(e.pointerId); base.classList.add('on'); move(e); ui.hideHelpSoon(); });
   base?.addEventListener('pointermove', (e) => { if (e.pointerId === active) move(e); });
   const end = (e) => {
     if (e.pointerId !== active) return;
@@ -67,6 +70,9 @@ export function createControls({ room, ui }) {
   };
   base?.addEventListener('pointerup', end);
   base?.addEventListener('pointercancel', end);
+  base?.addEventListener('lostpointercapture',end);
+  window.addEventListener('blur',()=>{if(active!==null)end({pointerId:active});});
+  document.addEventListener('visibilitychange',()=>{if(document.hidden&&active!==null)end({pointerId:active});});
 
   document.getElementById('actBtn')?.addEventListener('click', () => room.interact());
 

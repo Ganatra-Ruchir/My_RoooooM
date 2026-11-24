@@ -929,3 +929,24 @@ body:not(.tour-active) .world-hud {
 }
 
 #localAvatarCredit {position:fixed;bottom:10px;left:12px;z-index:30;font-size:11px;max-width:60vw;color:#eee;background:rgba(18,16,15,.88);padding:6px 9px;border-radius:5px;pointer-events:none} #localAvatarCredit[hidden]{display:none}
+
+/* Mobile cinematic UI — no unused image column or costly live backdrop blur. */
+body.touch .guided-tour-panel,body.touch .tour-finished,body.touch .joy,body.touch .world-hud,body.touch .topbar,body.touch .dock,body.touch .help-btn {backdrop-filter:none;-webkit-backdrop-filter:none}
+@media(max-width: 760px), (pointer:coarse) {
+  .guided-tour-panel {display:flex;flex-direction:column;gap:5px;top:max(10px,env(safe-area-inset-top));left:10px;right:10px;width:auto;max-width:none;min-width:0;padding:10px 12px;background:rgba(15,15,14,.92);border-radius:12px;box-shadow:0 5px 15px #0004}
+  .guided-tour-head {gap:6px;line-height:1.15}.guided-tour-head strong{font-size:9px;letter-spacing:.07em}
+  .guided-tour-category{display:none}.guided-tour-panel p{font-size:16px;line-height:1.2;margin:0}
+  .guided-tour-tags{display:none}.tour-focus-photo{display:none!important}
+  .guided-tour-meta{margin-top:0;gap:6px}.guided-tour-meta>span{font-size:10px;flex:1}
+  .guided-tour-meta button{font-size:11px;min-height:34px;padding:6px 10px;white-space:nowrap}
+  body.tour-active .npc-caption{font:500 13px/1.38 var(--font-ui);padding:8px 12px;max-width:calc(100vw - 16px);width:calc(100vw - 16px);bottom:max(12px,env(safe-area-inset-bottom));background:rgba(10,10,9,.84);border-radius:8px}
+  .tour-finished {display:flex;gap:8px;padding:12px 14px;bottom:max(64px,calc(env(safe-area-inset-bottom) + 58px));background:#171716f5;max-width:400px}
+  .tour-finished div{gap:5px}.tour-finished strong{font-size:12px}.tour-finished span{font-size:11px}
+  .tour-finished button{min-height:38px;padding:8px 12px;font-size:14px}
+  .tour-finished .local-avatar-link{min-height:26px;padding:4px;background:transparent;border:0;color:#c5b6a0;font-size:11px}
+  body.touch .joy{width:104px;height:104px;bottom:calc(env(safe-area-inset-bottom) + 72px);background:rgba(22,20,18,.75);border:1px solid #a9987b66}
+  body.touch .joy-knob{width:44px;height:44px;margin:-22px;background:#b6a38a}
+  body.touch .act-btn{width:56px;height:56px;bottom:calc(env(safe-area-inset-bottom) + 82px);font-size:21px}
+  body.touch #room{touch-action:none}
+  body.tour-active .joy,body.tour-active .act-btn{display:none!important}
+}

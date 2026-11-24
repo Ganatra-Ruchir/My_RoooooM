@@ -377,8 +377,13 @@ export function createUI({ room = null }) {
   // static chrome
   $('#fsBtn').innerHTML = icon('expand');
   $('#drawerClose').innerHTML = icon('x');
-  const touch = window.matchMedia('(pointer: coarse)').matches;
+  const touch = window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints>0 && window.innerWidth<850;
   body.classList.toggle('touch', touch);
+  if(touch){
+    $('#tourInstruction').textContent='Left joystick to move · Swipe to look · Tap objects';
+    const tip=document.querySelector('.mouse-tip');if(tip)tip.textContent='Joystick to move · Swipe to look · Tap to interact';
+    $('#mouseSensitivityLabel').textContent='Swipe speed';
+  }
   if (!document.documentElement.requestFullscreen) $('#fsBtn').hidden = true;
   backBtn.innerHTML = icon('left') + '<span></span>';
   document.querySelectorAll('.dock [data-go]').forEach((b) => {
@@ -697,21 +702,22 @@ export function createUI({ room = null }) {
     $('#tourCategory').textContent = step.category || 'ROOM TOUR';
     const tags = $('#tourTags');
     tags.replaceChildren();
-    (step.tags || []).slice(0, 7).forEach(t => {
+    (step.tags || []).slice(0, touch?2:5).forEach(t => {
       const badge = document.createElement('span');
       badge.textContent = String(t); // no HTML injection from portfolio content
       tags.appendChild(badge);
     });
     const focus = $('#tourFocus'), focusImage = $('#tourFocusImage');
-    focus.hidden = !step.image || step.beat !== 'exhibit';
+    focus.hidden = touch || !step.image || step.beat !== 'exhibit';
     if (step.image && step.beat === 'exhibit') focusImage.src = step.image;
     currentNarration = step.text;
-    showNpcLine(0, 'Meera · Your guide: ' + step.text, (step.seconds + 0.25) * 1000);
+    showNpcLine(0, 'Meera: ' + step.text, (step.seconds + 0.25) * 1000);
     speakGuide(step.text);
   }
   function updateTourProgress() {
     if (!room?.isTouring || !tourPanel || tourPanel.hidden) return;
     const percentage = Math.round(room.tourProgress * 100);
+    if($('#tourProgress').getAttribute('aria-valuenow')===String(percentage))return;
     $('#tourBar').style.width = percentage + '%';
     $('#tourProgress').setAttribute('aria-valuenow', String(percentage));
   }
@@ -721,29 +727,33 @@ export function createUI({ room = null }) {
     tourFinished.hidden = false;
     playing = false; // explicit Start Exploring click grants real pointer-lock permission
     if (voiceEnabled) stopGuideVoice();
-    showNpcLine(0, 'Meera · Your guide: The tour is complete. Click Start Exploring to take control.', 8000);
+    npcCaption.hidden=true;
+    currentNarration='';
   }
+  $('#tourSkip')?.addEventListener('click',()=>room?.skipGuidedTour());
   $('#tourExploreBtn')?.addEventListener('click', () => {
     tourFinished.hidden = true;
     startPlaying(); // deliberate user gesture enables continuous game mouse-look
   });
   const mouseSlider = $('#mouseSensitivity'), speedOutput = $('#mouseSensitivityValue');
   const invert = $('#invertMouse');
-  const savedSensitivity = Number(store.get('mouseSensitivity', 1));
+  const lookKey=touch?'touchLookSensitivityV2':'mouseSensitivity';
+  const invertKey=touch?'touchInvertYV2':'invertMouse';
+  const savedSensitivity = Number(store.get(lookKey, touch?1.15:1));
   const currentSensitivity = Number.isFinite(savedSensitivity) ? Math.max(0.35, Math.min(2.5, savedSensitivity)) : 1;
   if (mouseSlider) mouseSlider.value = String(currentSensitivity);
   if (speedOutput) speedOutput.textContent = currentSensitivity.toFixed(2) + '×';
-  if (invert) invert.checked = !!store.get('invertMouse', false);
+  if (invert) invert.checked = !!store.get(invertKey, false);
   room?.setLookSettings({ sensitivity: currentSensitivity, invertY: invert?.checked });
   mouseSlider?.addEventListener('input', () => {
     const value = Number(mouseSlider.value);
     room?.setLookSettings({ sensitivity: value });
     speedOutput.textContent = value.toFixed(2) + '×';
-    store.set('mouseSensitivity', value);
+    store.set(lookKey, value);
   });
   invert?.addEventListener('change', () => {
     room?.setLookSettings({ invertY: invert.checked });
-    store.set('invertMouse', invert.checked);
+    store.set(invertKey, invert.checked);
   });
 
   const minimap = $('#roomMiniMap');
@@ -825,6 +835,7 @@ export function createUI({ room = null }) {
     return { el: b, h };
   });
   function updateMarkers() {
+    if(room.mode==='follow')return;
     for (const m of markers) {
       const p = room.toScreen(m.h.pos);
       m.el.style.transform = `translate(${p.x}px, ${p.y}px)`;
