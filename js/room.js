@@ -7,6 +7,7 @@ import * as TX from './textures.js';
 import * as sound from './sound.js';
 import { createAvatar } from './avatar.js';
 import { buildExtras } from './extras.js';
+import {runPropChecks} from './prop-physics.js';
 import { createVisitor, collide, addObstacle, moveWithCollision, findFloorPath } from './player.js';
 import { createNPCSystem } from './npc.js';
 import { createFirstPersonArms } from './first-person.js';
@@ -1432,7 +1433,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     return true;
   }
   function standUp(){
-    if(!seated||seatTransition||coffeeHeld||heldBook)return false;
+    if(!seated||seatTransition||coffeeHeld||heldBook||extras.catHeld)return false;
     seated=false;const to=seatReturn?seatReturn.clone():player.pos.clone();collide(to);
     seatTransition={from:player.pos.clone(),to,time:0};player.vel.set(0,0,0);return true;
   }
@@ -1673,10 +1674,10 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     if (!running) return;
     requestAnimationFrame(frame);
     if(document.hidden){lastFrame=0;return;}
-    const now=performance.now(), elapsed=lastFrame?Math.min(.12,(now-lastFrame)/1000):1/60;
+    const now=performance.now(),rawElapsed=lastFrame?(now-lastFrame)/1000:1/60,elapsed=Math.min(.12,rawElapsed);
     lastFrame=now;
     // Adapt resolution to sustained frame rate rather than sacrifice input response.
-    perfElapsed+=elapsed;perfFrames++;
+    perfElapsed+=rawElapsed;perfFrames++;
     if(perfElapsed>2.5){
       const fps=perfFrames/perfElapsed;
       measuredFps=Math.round(fps);
@@ -1849,6 +1850,13 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     get catReady(){return extras.catReady;},
     pickupCat(){if(coffeeHeld||heldBook)return false;return extras.act('cat','pickup');},
     putCatDown(){return extras.act('cat','putdown');},
+    runPhysicsAudit(){
+      const results=runPropChecks(),check=(name,pass)=>results.push({name,pass:!!pass});
+      const wall={x:7,z:-7};collide(wall);check('Room boundary',Math.abs(wall.x)<=4.62&&Math.abs(wall.z)<=4.62);
+      const desk={x:-.8,z:.3};moveWithCollision(desk,0,-3);check('Desk collision',desk.z>=-.661);
+      const path=findFloorPath({x:-3.5,z:-1.2},{x:1.5,z:-2.7});check('Cat floor route',path.length>0);
+      return results;
+    },
     get materialDiagnostics(){
       const rig=realCharacters.get('maya'),head=new THREE.Vector3();let meshes=0,visibleMeshes=0,guideInFrame=false,guidePosition=null;
       if(rig){

@@ -2,6 +2,7 @@
 // event lanyards, rubber duck and the corner plant.
 import * as THREE from 'three';
 import * as TX from './textures.js';
+import {advanceSpring,advanceDrop} from './prop-physics.js';
 import {loadPhotographicProp} from './photographic-props.js';
 
 // The cat's patrol loop around the open floor (checked to avoid furniture).
@@ -34,12 +35,29 @@ export function buildExtras(ctx) {
     const pupilMat = std(0x101010, { roughness: 0.2 });
 
     const body = new THREE.Group(); body.position.set(0, 0.3, 0); root.add(body);
+    let seed=1743;const rnd=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
+    // Short physical guard hairs supplement the textured base coat, two draw calls.
+    function coat(parent,rx,ry,rz,cz,count,face=false){
+      const pos=[],colors=[];
+      for(let i=0;i<count;i++){
+        const z=2*rnd()-1,phi=rnd()*Math.PI*2,k=Math.sqrt(1-z*z),x=k*Math.cos(phi),y=k*Math.sin(phi);
+        if(y<-.84||face&&z>.45)continue;
+        const px=x*rx,py=y*ry,pz=z*rz+cz,nx=x/rx,ny=y/ry,nz=z/rz,inv=1/Math.hypot(nx,ny,nz);
+        const len=.003+rnd()*.006,v=.23+.18*rnd()-(Math.sin(phi*7+z*5)>.55?.09:0);
+        pos.push(px,py,pz,px+nx*inv*len,py+ny*inv*len,pz+nz*inv*len-.004);
+        colors.push(v*.72,v*.69,v*.65,v,v*.96,v*.88);
+      }
+      const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
+      const hairs=new THREE.LineSegments(g,new THREE.LineBasicMaterial({vertexColors:true,transparent:true,opacity:.5,depthWrite:false}));hairs.raycast=()=>{};parent.add(hairs);return hairs;
+    }
     // Rounded rib cage and haunches, not detached rings around a capsule.
     mesh(new THREE.SphereGeometry(1,36,24),fur,0,0,-.025,body).scale.set(.147,.158,.32);
     mesh(new THREE.SphereGeometry(1,28,20),fur,0,.024,-.203,body).scale.set(.151,.16,.142);
     mesh(new THREE.SphereGeometry(1,28,20),white,0,-.037,.195,body).scale.set(.102,.115,.105);
 
+    const bodyFur=coat(body,.148,.159,.321,-.025,2500);
     const head = new THREE.Group(); head.position.set(0, 0.12, 0.3); body.add(head);
+    const headFur=coat(head,.140,.124,.131,0,900,true);
     mesh(new THREE.SphereGeometry(.13,36,24),fur,0,0,0,head).scale.set(1.08,.95,1);
     for(const side of [-1,1])mesh(new THREE.SphereGeometry(.047,22,16),white,side*.035,-.042,.102,head).scale.set(1,.78,.91);
     mesh(new THREE.SphereGeometry(.019,18,12),pink,0,-.015,.145,head).scale.set(1,.66,.65);
@@ -127,7 +145,6 @@ export function buildExtras(ctx) {
         case 'sit': pose = 'sit'; st.timer -= dt; if (st.timer <= 0) { st.mode = 'walk'; nextTarget(); } break;
         case 'sleep':
           pose = 'sleep'; st.timer -= dt;
-          if (t - st.lastFx > 1.5) { st.lastFx = t; head.getWorldPosition(tmp); spawn('z', tmp.clone().add(new THREE.Vector3(0.05, 0.22, 0)), { rise: 0.55, life: 2.2, size: 0.14, drift: [0.18, 0.08] }); }
           if (st.timer <= 0) leaveBean();
           break;
         case 'hop': {
@@ -143,7 +160,6 @@ export function buildExtras(ctx) {
         case 'pet':
           pose=catHeld?'heldPet':'pet';st.timer-=dt;
           st.yawGoal = Math.atan2(camera.position.x - root.position.x, camera.position.z - root.position.z);
-          if (t - st.lastFx > 0.32) { st.lastFx = t; spawn('heart', root.position.clone().add(new THREE.Vector3((Math.random() - 0.5) * 0.3, 0.7, 0)), { rise: 0.7, life: 1.4, size: 0.15, drift: [(Math.random() - 0.5) * 0.3, (Math.random() - 0.5) * 0.3] }); }
           if(st.timer<=0)st.mode=catHeld?'held':st.attend?'attend':(st.onBean?'sleep':'walk');
           if (st.mode === 'sleep') st.timer = 6;
           break;
@@ -166,6 +182,7 @@ export function buildExtras(ctx) {
       legs[0].rotation.x = cur.front + sw; legs[1].rotation.x = cur.front - sw;
       legs[2].rotation.x = cur.back - sw; legs[3].rotation.x = cur.back + sw;
       const beingPetted=pose==='pet'||pose==='heldPet';
+      bodyFur.visible=headFur.visible=root.position.distanceToSquared(camera.position)<10;
       head.rotation.x=cur.head+(beingPetted?Math.sin(t*3)*.045:0);
       head.rotation.z=THREE.MathUtils.damp(head.rotation.z,beingPetted?.09*Math.sin(t*2):0,7,dt);
       ears.forEach((ear,i)=>{ear.rotation.z=(i===0?1:-1)*.24+(beingPetted?.065*Math.sin(t*5+i):.018*Math.sin(t*1.8+i));});
@@ -307,7 +324,7 @@ export function buildExtras(ctx) {
   hitBox(duck, 0.28, 0.26, 0.32, 0, 0.11, 0);
   register(duck, { kind: 'duck', index: 0, label: 'Rubber duck — debugging buddy' }, { dir: new THREE.Vector3(0, 1, 0), selectOffset: 0.0, hoverOffset: 0.02 });
   anchors.duck = () => duck.position.clone().add(new THREE.Vector3(0, 0.35, 0));
-  let squash = 0;
+  let squash=0;const duckSpring={x:0,v:0};
 
   // =====================================================================
   // Corner plant (grows when watered)
@@ -360,6 +377,25 @@ export function buildExtras(ctx) {
   register(plant, { kind: 'plant', index: 0, label: 'Water the plant' }, { dir: new THREE.Vector3(0, 0, 0), selectOffset: 0, hoverOffset: 0 });
   anchors.plant = () => plant.position.clone().add(new THREE.Vector3(0.3, 2.2 * growth, 0.3));
   let wiggle=0,photoPlant=null;
+  const plantSpring={x:0,v:0},waterDrops=[],waterGeo=new THREE.SphereGeometry(.012,8,6);
+  const waterMat=new THREE.MeshPhysicalMaterial({color:0xc1d8d5,roughness:.12,transparent:true,opacity:.72,clearcoat:1,depthWrite:false,envMapIntensity:.65});
+  const drySoil=soil.material.color.clone();let wetness=0;
+  function pourWater(){
+    for(let i=0;i<20&&waterDrops.length<40;i++){
+      const angle=i*2.39996,r=.08+.21*((i%5)/5),drop=new THREE.Mesh(waterGeo,waterMat);
+      drop.raycast=()=>{};drop.userData.noInteractionRay=true;scene.add(drop);
+      const d={mesh:drop,x:plant.position.x+Math.cos(angle)*r,y:plant.position.y+1.65+(i%6)*.035,z:plant.position.z+Math.sin(angle)*r,vx:0,vy:-.3-(i%3)*.15,vz:0,delay:i*.018};
+      drop.position.set(d.x,d.y,d.z);drop.visible=false;waterDrops.push(d);
+    }
+  }
+  function updateWater(dt){
+    for(let i=waterDrops.length-1;i>=0;i--){
+      const d=waterDrops[i];d.delay-=dt;if(d.delay>0)continue;d.mesh.visible=true;
+      if(!advanceDrop(d,dt,plant.position.y+.57)){scene.remove(d.mesh);waterDrops.splice(i,1);wetness=Math.min(1,wetness+.09);continue;}
+      d.mesh.position.set(d.x,d.y,d.z);d.mesh.scale.set(1,1+Math.min(1,Math.abs(d.vy)*.13),1);
+    }
+    wetness=Math.max(0,wetness-dt*.013);soil.material.color.copy(drySoil).multiplyScalar(1-.35*wetness);
+  }
   loadPhotographicProp('potted_plant_02',2.15,1.35,1.35).then(model=>{if(!model)return;photoPlant=model;plant.add(model);fallbackPlant.visible=false;model.scale.multiplyScalar(1+(growth-1)*.35);});
 
   // =====================================================================
@@ -411,12 +447,12 @@ export function buildExtras(ctx) {
     swings.forEach((s) => { s.rotation.x = Math.sin(t * 2.2 + s.userData.phase) * swingAmp; });
 
     // duck squash + plant wiggle
-    squash = THREE.MathUtils.damp(squash, 0, 6, dt);
-    duckBody.scale.set(1 + squash * 0.25, 1 - squash * 0.35, 1 + squash * 0.25);
-    wiggle = THREE.MathUtils.damp(wiggle, 0, 2.5, dt);
-    foliage.rotation.z = Math.sin(t * 9) * 0.06 * wiggle;
-    if(photoPlant)photoPlant.rotation.z=Math.sin(t*8)*.015*wiggle;
-    foliage.rotation.x = Math.cos(t * 7) * 0.04 * wiggle;
+    squash=advanceSpring(duckSpring,0,dt,130,14);
+    const vertical=1-.24*squash,wide=Math.sqrt(1/Math.max(.70,vertical));
+    duckBody.scale.set(wide,vertical,wide);
+    wiggle=advanceSpring(plantSpring,0,dt,52,7);
+    foliage.rotation.z=.065*wiggle;if(photoPlant)photoPlant.rotation.z=.015*wiggle;
+    foliage.rotation.x=.035*wiggle;updateWater(dt);
     foliage.scale.setScalar(THREE.MathUtils.damp(foliage.scale.x, growth, 3, dt));
   }
 
@@ -441,14 +477,11 @@ export function buildExtras(ctx) {
         phoneSt.nextBuzz = phoneSt.now + 60;
         return true;
       case 'lanyard': swingAmp = 0.35; return true;
-      case 'duck': squash = 1; return true;
+      case 'duck': duckSpring.x=1;duckSpring.v=0;return true;
       case 'plant': {
         const previousGrowth=growth;growth=Math.min(1.35,growth+.05);if(photoPlant)photoPlant.scale.multiplyScalar((1+(growth-1)*.35)/(1+(previousGrowth-1)*.35));
         try { localStorage.setItem('room.plantGrowth', String(growth)); } catch { /* ignore */ }
-        wiggle = 1;
-        for (let i = 0; i < 9; i++) {
-          spawn('drop', plant.position.clone().add(new THREE.Vector3((Math.random() - 0.5) * 0.7, 1.6 + Math.random() * 0.5, (Math.random() - 0.5) * 0.7)), { rise: -1.0, life: 0.9 + Math.random() * 0.3, size: 0.035 });
-        }
+        plantSpring.v+=2.2;pourWater();
         return growth;
       }
       default: return false;

@@ -635,6 +635,10 @@ export function createUI({ room = null }) {
   const locate=document.createElement('button');locate.type='button';locate.className='ghost-btn';locate.textContent='Look at Meera';
   $('#guideStatus').after(locate);locate.addEventListener('click',()=>{if(room?.lookAtGuide()){toggleHelp(false);}else showMaterialInfo();});
   qualitySelect?.addEventListener('change',showMaterialInfo);
+  const audit=document.createElement('button');audit.type='button';audit.className='ghost-btn';audit.textContent='Run physics checks';
+  const auditInfo=document.createElement('small');auditInfo.style.cssText='display:block;white-space:pre-line;margin-top:6px;font-size:11px';
+  qualityInfo?.after(audit,auditInfo);
+  audit.addEventListener('click',()=>{if(!room)return;const checks=room.runPhysicsAudit();auditInfo.textContent=checks.filter(x=>x.pass).length+'/'+checks.length+' passed\n'+checks.map(x=>(x.pass?'✓ ':'✕ ')+x.name).join('\n');showMaterialInfo();});
   let helpTimer = 0;
   function toggleHelp(show = help.hidden) { help.hidden = !show; clearTimeout(helpTimer); }
   function hideHelpSoon() { if (!help.hidden && !helpTimer) helpTimer = setTimeout(() => { help.hidden = true; helpTimer = 0; }, 4000); }
