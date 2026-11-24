@@ -56,7 +56,7 @@ async function boot() {
   if (!hasWebGL()) return textOnly();
   await fontsReady();
 
-  const localAvatar = await readLocalAvatar();
+  const localAvatar = await Promise.race([readLocalAvatar(), new Promise(resolve=>setTimeout(()=>resolve(null),1500))]);
   let createRoom;
   try {
     ({ createRoom } = await import('./room.js'));
@@ -103,7 +103,7 @@ async function boot() {
   room.setNight(night, true);
 
   async function start() {
-    if (started) return;
+    if (started || !room || !ui) return;
     started = true;
     clearInterval(ticker);
     if (msg) msg.textContent = "Loading Meera's 3D character";

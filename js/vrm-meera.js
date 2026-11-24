@@ -205,7 +205,7 @@ export async function loadMeeraVRM({ x, z, scale = 1.52, onProgress, localFile =
       setExpr('blink',blink);
       // Browser speech boundary events drive vowel shapes when available.
       // With muted narration, use restrained caption-time gestures instead.
-      const speech=globalThis.__meeraVoice;
+      const speech=id === 'maya' ? globalThis.__meeraVoice : null;
       if(speech?.active && speech.word !== spokenWord){spokenWord=speech.word||'';lastWordAt=now;}
       if(speech?.active && !lastVoice)lastWordAt=now;
       lastVoice=!!speech?.active;

@@ -139,7 +139,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   function photograph(material,id,rx,ry,{color=true,normal=.45,rough=true}={}){
     const maps=[['normalMap','nor_gl'],...(color?[['map','diff']]:[]),...(rough?[['roughnessMap','rough']]:[])];
     for(const [prop,kind] of maps)pbrMap(id,kind,rx,ry).then(t=>{
-      if(!t)return;
+      if(!t){ console.warn('Room material unavailable:',id,kind); return; }
       material[prop]=t;
       if(prop==='normalMap')material.normalScale.set(normal,normal);
       material.needsUpdate=true;
@@ -679,12 +679,12 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   walkRing.raycast = () => {};
 
   // ---------- Decor ----------
-  const rugMaterial = photograph(std(0x8d7862, {map: fabricGrain, roughness: 1}), 'rough_linen', 9, 8, {normal: .85, rough:true});
+  const rugMaterial = photograph(std(0x8d7862, {map: fabricGrain, roughness: 1}), 'rough_linen', 9, 8, {color:false,normal: .85, rough:true});
   const rug = mesh(new THREE.PlaneGeometry(4.25, 3.75), rugMaterial, 1.5, 0.014, 1.6, scene, { cast: false });
   rug.rotation.x = -Math.PI / 2;
   const loungeFabric = photograph(new THREE.MeshPhysicalMaterial({
     color: 0x9b8067, roughness: 0.91, sheen: 0.45, sheenRoughness: 0.85, map: fabricGrain,
-  }), 'rough_linen', 2, 2, {color:true,normal:.65,rough:true});
+  }), 'rough_linen', 2, 2, {color:false,normal:.65,rough:true});
   // One upholstered reading chair, no sofa. Keep its footprint within the old beanbag collider.
   const chair = new THREE.Group(); chair.position.set(2.7,0,2.4); chair.rotation.y = -0.65; scene.add(chair);
   const chairWood = photograph(std(0x997c61, {roughness:.48}), 'dark_wood', 1, 1, {normal:.45});
@@ -803,10 +803,11 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   const bronze=std(0x8d6341,{metalness:.72,roughness:.34});
   mesh(new THREE.CylinderGeometry(.24,.26,.05,32),bronze,0,.03,0,lampDecor);
   mesh(new THREE.CylinderGeometry(.027,.035,2.45,18),bronze,0,1.26,0,lampDecor);
-  const shade=std(0x9a7650,{side:THREE.DoubleSide,roughness:.9,emissive:0xffaa55,emissiveIntensity:.52,map:fabricGrain});
-  mesh(new THREE.CylinderGeometry(.23,.47,.48,48,1,true),shade,0,2.49,0,lampDecor);
+  const floorShade=std(0x9a7650,{side:THREE.DoubleSide,roughness:.9,emissive:0xffaa55,emissiveIntensity:.52,map:fabricGrain});
+  mesh(new THREE.CylinderGeometry(.23,.47,.48,48,1,true),floorShade,0,2.49,0,lampDecor);
   const floorLamp = new THREE.PointLight(0xffba75,23,6,2);
   floorLamp.position.set(4.25,2.25,3.65); scene.add(floorLamp);
+  addObstacle([4.25,3.65,.26]);
   const DAY = { hemi: 0.65, hemiSky: new THREE.Color(0xdce4e5), hemiGround: new THREE.Color(0x726050), sun: 1.7, sunCol: new THREE.Color(0xe6efff), fill: 0.32, lamp: 4, neon: 0.2, screen: 0.32, bulb: 0.6, gallery: 0.8, exposure: 1.13, pic: 1 };
   const NIGHT = { hemi: 0.43, hemiSky: new THREE.Color(0x8697a7), hemiGround: new THREE.Color(0x60483b), sun: 0.32, sunCol: new THREE.Color(0xb1c9df), fill: 0.22, lamp: 16, neon: 0.45, screen: 0.8, bulb: 2, gallery: 1.4, exposure: 1.3, pic: 1 };
   let nightTarget = 0, night = 0;
@@ -820,7 +821,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     fill.intensity = L(DAY.fill, NIGHT.fill);
     cornerBounce.intensity = L(0.35, 1.2);
     practicalLights.forEach(([light,power])=>{light.intensity=power*L(.62,1);});
-    floorLamp.intensity=L(10,23); shade.emissiveIntensity=L(.25,.8);
+    floorLamp.intensity=L(10,23); floorShade.emissiveIntensity=L(.25,.8);
     lampLight.intensity = L(DAY.lamp, NIGHT.lamp) * lampAmt;
     neonLight.intensity = L(DAY.neon, NIGHT.neon);
     neonMat.opacity = L(0.75, 1);
@@ -1021,6 +1022,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     // Frame head AND shoulders; don't move the camera inside the head mesh.
     guided.face.y -= 0.13;
     const target = new THREE.Vector3(stop.look[0], stop.look[1], stop.look[2]);
+    if (stop.id === 'about') { ruchirHead(target); target.y -= .15; }
     const hasExhibit = !!stop.exhibitSay;
     if (guided.beat === 'travel' && guided.elapsed >= stop.speakerStart) {
       guided.beat = 'speaker';
