@@ -26,7 +26,8 @@ const GROUND_DAY = new THREE.Color(0xe6d5bf), GROUND_NIGHT = new THREE.Color(0x2
 export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, localAvatar = null }) {
   // ---------- Renderer / scene ----------
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance' });
-  const lowPower = matchMedia('(pointer: coarse)').matches || (navigator.deviceMemory && navigator.deviceMemory < 4);
+  const touchDevice = matchMedia('(pointer: coarse)').matches || (navigator.maxTouchPoints>0 && innerWidth<850);
+  const lowPower = touchDevice || (navigator.deviceMemory && navigator.deviceMemory < 4);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   const pixelLimit = lowPower ? 1 : 1.65;
   let renderScale = Math.min(window.devicePixelRatio || 1,pixelLimit);
@@ -454,6 +455,13 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     register(root, { kind: 'project', index: i, label: p.title + ' — ' + p.hook }, { dir: new THREE.Vector3(0, 0, 1), selectOffset: 0.42, hoverOffset: 0.08 });
     projectRoots.push(root);
   });
+  // Physical hardcovers: inset paper block, separate cover boards and rounded spine.
+  function buildHardcover(root,w,h,d,cover,spine,pages){
+    mesh(box(w*.79,h-.042,d-.035),pages,0,0,-.009,root);
+    const thickness=Math.min(.023,w*.12);
+    for(const side of [-1,1])mesh(box(thickness,h,d),cover,side*(w/2-thickness/2),0,0,root,{cast:false});
+    mesh(rbox(w,h,.065,.022),spine,0,0,d/2-.027,root,{cast:false});
+  }
   // workbench builds: binders with spines
   const binderColors = ['#34424a','#64483b','#414f43','#6c583f','#453d45','#58383c','#374858','#55594b','#66513f','#394b48'];
   const heights = [0.84, 0.8, 0.88, 0.78, 0.86, 0.82, 0.9, 0.8, 0.85, 0.83];
@@ -461,14 +469,14 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   data.workbench.forEach((b, i) => {
     const w = 0.25, h = heights[i % heights.length], d = 0.52;
     const col = binderColors[i % binderColors.length];
-    const sideM = std(new THREE.Color(col).multiplyScalar(0.8));
-    const spineM = new THREE.MeshStandardMaterial({ map: TX.spineTexture({ title: b.title, color: col, number: String(i + 1).padStart(2, '0'), light: col === '#d7a04a' }), roughness: 0.7 });
+    const sideM = std(new THREE.Color(col).multiplyScalar(.85),{map:fabricGrain,bumpMap:fabricGrain,bumpScale:.009,roughness:.86});
+    const spineM = new THREE.MeshStandardMaterial({ map: TX.spineTexture({ title: b.title, color: col, number: String(i + 1).padStart(2, '0') }), bumpMap:fabricGrain,bumpScale:.006,roughness: 0.84 });
     const pages = std(0xbfb29b,{map:TX.paperEdgesTexture(),roughness:.92});
     const root = new THREE.Group();
     root.position.set(-1.35 + i * 0.3, levelTop(1) + h / 2 + 0.001, SD / 2 - d / 2 - 0.05);
     shelf.add(root);
-    const m = mesh(box(w, h, d), [sideM, sideM, pages, pages, spineM, sideM], 0, 0, 0, root);
-    m.rotation.z = (i === 9 ? -0.04 : 0);
+    buildHardcover(root,w,h,d,sideM,spineM,pages);
+    root.rotation.z=(i===9?-.04:((i%3)-1)*.018);
     register(root, { kind: 'build', index: i, label: b.title }, { dir: new THREE.Vector3(0, 0, 1), selectOffset: 0.38, hoverOffset: 0.08 });
     buildRoots.push(root);
   });
@@ -544,12 +552,13 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     const col = a.color;
     const cover = new THREE.MeshStandardMaterial({ map: TX.journalCoverTexture(a, i), roughness: 0.7 });
     const spine = new THREE.MeshStandardMaterial({ map: TX.spineTexture({ title: a.spine, color: col, w: 96, h: 512 }), roughness: 0.7 });
-    const pages = std(0xf6eedf);
-    const back = std(new THREE.Color(col).multiplyScalar(0.8));
+    const pages = std(0xc6b9a2,{map:TX.paperEdgesTexture(),roughness:.94});
+    const back = std(new THREE.Color(col).lerp(new THREE.Color(0x342b22),.62),{map:fabricGrain,bumpMap:fabricGrain,bumpScale:.006,roughness:.85});
     const root = new THREE.Group();
     root.position.set(-0.02 + i * 0.112, deskTop + h / 2 + 0.001, -2.0);
     scene.add(root);
-    mesh(box(w, h, d), [cover, back, pages, pages, spine, back], 0, 0, 0, root);
+    buildHardcover(root,w,h,d,back,spine,pages);
+    mesh(box(.003,h-.032,d-.032),cover,w/2+.002,0,0,root,{cast:false});
     register(root, { kind: 'article', index: i, label: a.title }, { dir: new THREE.Vector3(0, 1, 0), selectOffset: 0.32, hoverOffset: 0.06 });
     articleRoots.push(root);
   });
@@ -675,12 +684,14 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
         if (index >= 0) interactive.splice(index, 1);
         avatar.chair.position.set(0.15, 0, -0.25);
         avatar.chair.rotation.y = 0.5;
+        addCharacterProxy(rig.root,rig);
         register(rig.root, { kind: 'talk', index: 0, label: 'Talk to Ruchir' },
           { dir: new THREE.Vector3(), selectOffset: 0, hoverOffset: 0 });
         addObstacle([STANDEE_POS.x, STANDEE_POS.z, 0.44]);
       } else if (id === 'maya') {
         const index = 0;
         npcSystem.attachVisual(index, rig.root);
+        addCharacterProxy(rig.root,rig);
         register(rig.root, { kind: 'npc', index, label: 'Talk to Meera' },
           { dir: new THREE.Vector3(), selectOffset: 0, hoverOffset: 0 });
       }
@@ -943,13 +954,17 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   const EYE = 2.75;
   const cam = { yaw: 0.93, pitch: -0.06 };
   let lookSensitivity = 1.0, invertLookY = false;
-  function applyMouseLook(dx, dy) {
+  function applyMouseLook(dx, dy, touch=false) {
     if (mode !== 'follow' || talking || guided.active) return;
     lookGoal = null;
-    const f = (lowPower ? 0.0032 : 0.00185) * lookSensitivity;
-    cam.yaw -= THREE.MathUtils.clamp(dx, -140, 140) * f;
-    cam.pitch = THREE.MathUtils.clamp(cam.pitch -
-      THREE.MathUtils.clamp(dy, -140, 140) * f * (invertLookY ? -1 : 1), -1.15, 1.05);
+    // A full-width thumb swipe turns 180 degrees at 1x. Do not discard fast
+    // swipes or tie responsiveness to GPU frame rate. Desktop mouse stays precise.
+    const gain=touch?Math.PI/Math.max(280,canvas.clientWidth):.00185;
+    const x=touch?dx:THREE.MathUtils.clamp(dx,-180,180);
+    const y=touch?dy:THREE.MathUtils.clamp(dy,-180,180);
+    cam.yaw = Math.atan2(Math.sin(cam.yaw-x*gain*lookSensitivity),Math.cos(cam.yaw-x*gain*lookSensitivity));
+    cam.pitch = THREE.MathUtils.clamp(cam.pitch-y*gain*lookSensitivity*(touch?.72:1)*(invertLookY?-1:1),-1.27,1.15);
+    // Do not force a raycast on every input event; the timed aim update is independent.
   }
 
   // Auto-play guided first-person tour. Tour updates the visitor's position,
@@ -1135,7 +1150,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
       if (Math.abs(d) < 0.01 && Math.abs(lookGoal.pitch - cam.pitch) < 0.01) lookGoal = null;
     }
     if (!talking && canWalk() && input.turn) { cam.yaw += input.turn * 2.1 * dt; lookGoal = null; }
-    cam.pitch = THREE.MathUtils.clamp(cam.pitch, -1.15, 1.05);
+    cam.pitch = THREE.MathUtils.clamp(cam.pitch, -1.27, 1.15);
     fp.bob += dt * player.speed * 2.6;
     const bobY = Math.sin(fp.bob * 2) * (lowPower?.008:.022) * Math.min(1, player.speed / 2.6);
     fpPos.set(player.pos.x, EYE + bobY, player.pos.z);
@@ -1191,11 +1206,37 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   const ndc = new THREE.Vector2();
   let hovered = null, selected = null, glowTarget = null;
   const shown = (o) => { for (let p = o; p; p = p.parent) if (!p.visible) return false; return true; };
+  // Character hitboxes avoid CPU skinning and per-triangle tests on VRMs.
+  // Static opaque meshes still occlude interaction targets, including walls.
+  const rayCandidates=[];
+  function castVisible(maxDistance=Infinity) {
+    rayCandidates.length=0;
+    scene.traverseVisible(o=>{
+      if(!o.isMesh || o.isSkinnedMesh || o.isInstancedMesh)return;
+      for(let a=o.parent;a;a=a.parent)if(a.userData.characterRayProxy && !o.userData.interactionProxy)return;
+      rayCandidates.push(o);
+    });
+    raycaster.far=maxDistance;
+    const hits=raycaster.intersectObjects(rayCandidates,false);
+    raycaster.far=Infinity;
+    return hits;
+  }
+  function addCharacterProxy(root,rig){
+    const head=rig.headWorld(new THREE.Vector3());
+    root.updateWorldMatrix(true,false);
+    const local=root.worldToLocal(head.clone());
+    const height=Math.max(1.6,Math.min(4.2,local.y+.25));
+    const proxy=mesh(box(.88,height,.66),new THREE.MeshBasicMaterial({transparent:true,opacity:0,depthWrite:false,colorWrite:false}),0,height/2,0,root,{cast:false,receive:false});
+    proxy.userData.interactionProxy=true;
+    root.userData.characterRayProxy=true;
+  }
   function castAt(clientX, clientY) {
     const r = canvas.getBoundingClientRect();
     ndc.set(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
     raycaster.setFromCamera(ndc, camera);
-    return raycaster.intersectObjects(scene.children, true).filter((h) => shown(h.object));
+    camera.updateMatrixWorld(true);
+    raycaster.setFromCamera(ndc,camera);
+    return castVisible();
   }
   function pickHit(hits) {
     const h = hits[0];
@@ -1218,6 +1259,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   canvas.addEventListener('pointerdown', (e) => {
     if (guided.active) return;
     if(down && down.id!==e.pointerId)return;
+    if(e.pointerType==='touch'&&e.cancelable)e.preventDefault();
     down = { id:e.pointerId,x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, t: performance.now(), dragged:false };
     lastFreePointer = { x: e.clientX, y: e.clientY };
     if (e.pointerType !== 'mouse' && canvas.setPointerCapture) {
@@ -1234,8 +1276,8 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
       lookGoal = null;
       // One-to-one horizontal and vertical swipe, including on touchscreens.
       // Drag left = look left, drag up = look up. No mouse wheel required.
-      if(Math.hypot(e.clientX-down.x,e.clientY-down.y)>5)down.dragged=true;
-      if(down.dragged)applyMouseLook(e.clientX - down.lx, e.clientY - down.ly);
+      if(Math.hypot(e.clientX-down.x,e.clientY-down.y)>3)down.dragged=true;
+      if(down.dragged)applyMouseLook(e.clientX - down.lx, e.clientY - down.ly,e.pointerType==='touch');
       if (e.pointerType === 'touch' && e.cancelable) e.preventDefault();
       down.lx = e.clientX; down.ly = e.clientY;
       setHovered(null, e);
@@ -1277,9 +1319,13 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     down = null;
     if (moved > 6 || !quick) return;
     // mouse locked (playing): a click uses whatever the crosshair points at
-    if (document.pointerLockElement === canvas) { if (prompt && canWalk()) hooks.onSelect?.(prompt.kind, prompt.index); return; }
+    if (document.pointerLockElement === canvas) { if(canWalk())performInteraction(); return; }
     const { o, hit } = pickHit(castAt(e.clientX, e.clientY));
-    if (o) { hooks.onSelect?.(o.userData.hit.kind, o.userData.hit.index); return; }
+    if (o && canWalk()) {
+      const action=o.userData.hit;
+      if(hit.distance <= interactionReach(action.kind))hooks.onSelect?.(action.kind,action.index);
+      return;
+    }
     hooks.onEmptyClick?.();
     // click the floor to walk there
     if (hit && hit.point.y < 0.05 && canWalk()) { player.target = hit.point.clone().setY(0); player.stuck = 0; }
@@ -1375,42 +1421,47 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     if (p.kind === 'contact') return neon;
     return interactive.find((o) => o.userData.hit.kind === p.kind) || null;
   }
+  function interactionReach(kind){
+    return kind==='talk'||kind==='npc'?3.2:kind==='plant'?3.0:4.5;
+  }
+  function aimedPrompt(){
+    if(!canWalk()||mode!=='follow'||fp.blend<1)return null;
+    camera.updateMatrixWorld(true);
+    raycaster.setFromCamera(CENTER,camera);
+    const h=castVisible(4.5)[0];
+    if(!h)return null;
+    let root=h.object;
+    while(root&&!root.userData.hit)root=root.parent;
+    if(!root)return null; // looking at a wall, floor or ordinary decor: no unrelated prompt
+    const hit=root.userData.hit;
+    if(h.distance>interactionReach(hit.kind))return null;
+    const label=hit.kind==='plant'?'Water the plant':hit.kind==='talk'?'Talk to Ruchir':hit.label;
+    if(lookPrompt.root===root&&lookPrompt.kind===hit.kind&&lookPrompt.index===hit.index){
+      lookPrompt.point.copy(h.point);lookPrompt.y=h.point.y+.3;return lookPrompt;
+    }
+    const point=h.point.clone();
+    return lookPrompt={kind:hit.kind,index:hit.index,label,root,point,y:point.y+.3,pos:out=>out.copy(point)};
+  }
   function updatePrompt(dt) {
-    promptT -= dt;
-    if (promptT > 0) return;
-    promptT = lowPower ? .28 : .12;
-    let best = null, bestScore = Infinity;
-    // first person: whatever the crosshair points at (within reach) wins
-    if (!lowPower && canWalk() && mode === 'follow' && fp.blend >= 1) {
-      raycaster.setFromCamera(CENTER, camera);
-      const h = raycaster.intersectObjects(scene.children, true).find((x) => shown(x.object));
-      if (h && h.distance < 4.5) {
-        let o = h.object;
-        while (o && !o.userData.hit) o = o.parent;
-        if (o && o.userData.hit.kind === 'talk' && h.distance > 3.6) o = null; // walk up to him to talk
-        if (o) {
-          const hit = o.userData.hit;
-          const label = hit.kind === 'talk' ? 'Talk to Ruchir' : hit.label;
-          best = lookPrompt.kind === hit.kind && lookPrompt.index === hit.index && lookPrompt.label === label ? lookPrompt : (lookPrompt = { kind: hit.kind, index: hit.index, label, root: o, y: h.point.y + 0.5, pos: (out) => out.copy(h.point) });
-        }
-      }
+    promptT-=dt;if(promptT>0)return;
+    promptT=lowPower?.16:.10;
+    let best=null,bestScore=Infinity;
+    if(mode==='follow')best=aimedPrompt();
+    // Proximity targeting is reserved for the overhead map, never first person.
+    else if(canWalk())for(const tg of TARGETS){
+      tg.pos(pv);const d=Math.hypot(pv.x-player.pos.x,pv.z-player.pos.z);
+      if(d<=tg.r&&d<bestScore){best=tg;bestScore=d;}
     }
-    if (!best && canWalk()) {
-      const fx = Math.sin(player.yaw), fz = Math.cos(player.yaw);
-      for (const tg of TARGETS) {
-        tg.pos(pv);
-        const dx = pv.x - player.pos.x, dz = pv.z - player.pos.z, d = Math.hypot(dx, dz);
-        if (d > tg.r) continue;
-        const facing = d > 0.01 ? (dx * fx + dz * fz) / d : 1;
-        const score = d - (tg.prio || 0) + (1 - facing) * (tg.fw ?? 0.5);
-        if (score < bestScore) { bestScore = score; best = tg; }
-      }
+    if(best!==prompt){
+      prompt=best;glowTarget=rootForPrompt(prompt);
+      hooks.onPrompt?.(prompt?{kind:prompt.kind,index:prompt.index,label:prompt.label}:null);
     }
-    if (best !== prompt) {
-      prompt = best;
-      glowTarget = rootForPrompt(prompt);
-      hooks.onPrompt?.(prompt ? { kind: prompt.kind, index: prompt.index, label: prompt.label } : null);
-    }
+  }
+  function performInteraction(){
+    if(!canWalk())return false;
+    const fresh=mode==='follow'?aimedPrompt():prompt;
+    if(!fresh){promptT=0;updatePrompt(0);return false;}
+    hooks.onSelect?.(fresh.kind,fresh.index);return true;
   }
 
   // ---------- Loop ----------
@@ -1609,11 +1660,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
       if (guided.active) { Object.assign(input, { x: 0, y: 0, turn: 0, run: false }); return; }
       Object.assign(input, v);
     },
-    interact() {
-      if (!prompt || !canWalk()) return false;
-      hooks.onSelect?.(prompt.kind, prompt.index);
-      return true;
-    },
+    interact() { return performInteraction(); },
     promptAnchor() { if (!prompt) return null; prompt.pos(pv); return pv.clone().setY(prompt.kind === 'cat' ? 1.4 : prompt.y); },
     setTalking(on) { talking = on; if (on) player.target = null; },
     lockMovement(on) { movementLocked = on; },

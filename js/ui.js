@@ -590,7 +590,7 @@ export function createUI({ room = null }) {
     promptOn = p;
     promptEl.hidden = !p;
     actBtn.hidden = !p;
-    if (p) { promptText.textContent = p.label; actBtn.setAttribute('aria-label', p.label); }
+    if (p) { promptText.textContent = p.label; actBtn.setAttribute('aria-label', p.label);actBtn.textContent=p.kind==='plant'?'💧':'✋'; }
   }
   promptEl.querySelector('kbd').textContent = touch ? '✋' : 'E';
   promptEl.addEventListener('click', () => room?.interact());
@@ -737,9 +737,9 @@ export function createUI({ room = null }) {
   });
   const mouseSlider = $('#mouseSensitivity'), speedOutput = $('#mouseSensitivityValue');
   const invert = $('#invertMouse');
-  const lookKey=touch?'touchLookSensitivityV2':'mouseSensitivity';
-  const invertKey=touch?'touchInvertYV2':'invertMouse';
-  const savedSensitivity = Number(store.get(lookKey, touch?1.15:1));
+  const lookKey=touch?'touchLookSensitivityV3':'mouseSensitivity';
+  const invertKey=touch?'touchInvertYV3':'invertMouse';
+  const savedSensitivity = Number(store.get(lookKey, 1));
   const currentSensitivity = Number.isFinite(savedSensitivity) ? Math.max(0.35, Math.min(2.5, savedSensitivity)) : 1;
   if (mouseSlider) mouseSlider.value = String(currentSensitivity);
   if (speedOutput) speedOutput.textContent = currentSensitivity.toFixed(2) + '×';

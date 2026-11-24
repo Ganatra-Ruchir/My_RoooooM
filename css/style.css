@@ -950,3 +950,8 @@ body.touch .guided-tour-panel,body.touch .tour-finished,body.touch .joy,body.tou
   body.touch #room{touch-action:none}
   body.tour-active .joy,body.tour-active .act-btn{display:none!important}
 }
+
+/* Touch gestures go directly to the canvas; decorative HUD layers cannot steal them. */
+body.touch .crosshair,body.touch .world-hud,body.touch .marker,body.touch #tooltip{pointer-events:none!important}
+body.touch #room{touch-action:none;overscroll-behavior:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+body.touch .joy{touch-action:none;user-select:none;-webkit-user-select:none}

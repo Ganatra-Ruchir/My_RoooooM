@@ -499,3 +499,23 @@ export function gardenTexture(night){
   }
   return toTexture(c);
 }
+
+// Shared local material textures: vein relief and ceramic pores. No external requests.
+let leafMap,ceramicMap;
+export function leafTexture(){
+  if(leafMap)return leafMap;
+  const [c,x]=canvas(256,512),r=rng(9021);
+  const g=x.createLinearGradient(0,0,256,0);g.addColorStop(0,'#79905e');g.addColorStop(.46,'#c1ce9d');g.addColorStop(.51,'#a4bc86');g.addColorStop(1,'#66824f');x.fillStyle=g;x.fillRect(0,0,256,512);
+  const img=x.getImageData(0,0,256,512);for(let i=0;i<img.data.length;i+=4){const n=(r()-.5)*19;for(let k=0;k<3;k++)img.data[i+k]+=n;}x.putImageData(img,0,0);
+  x.strokeStyle='rgba(225,236,185,.65)';x.lineWidth=2.5;x.beginPath();x.moveTo(128,512);x.quadraticCurveTo(125,250,128,0);x.stroke();
+  for(let i=0;i<15;i++)for(const side of [-1,1]){const y=25+i*33;const end=128+side*(92+20*r());x.strokeStyle='rgba(222,234,176,.31)';x.lineWidth=1;x.beginPath();x.moveTo(128,y+24);x.quadraticCurveTo(128+side*45,y+4,end,y-32);x.stroke();
+    for(let k=1;k<4;k++){x.strokeStyle='rgba(49,83,34,.14)';x.beginPath();const px=128+side*k*22;x.moveTo(px,y+12-k*8);x.lineTo(px+side*14,y-24-k*4);x.stroke();}
+  }
+  return leafMap=toTexture(c,{aniso:4});
+}
+export function ceramicTexture(){
+  if(ceramicMap)return ceramicMap;
+  const [c,x]=canvas(256,256),r=rng(221);const img=x.createImageData(256,256);
+  for(let i=0;i<img.data.length;i+=4){const v=185+r()*48+Math.sin((i/4)%256*.1)*8;img.data[i]=v;img.data[i+1]=v-5;img.data[i+2]=v-11;img.data[i+3]=255;}
+  x.putImageData(img,0,0);return ceramicMap=toTexture(c,{repeat:[2,2],aniso:4});
+}

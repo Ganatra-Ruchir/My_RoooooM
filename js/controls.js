@@ -54,7 +54,7 @@ export function createControls({ room, ui }) {
     if (d > R) { dx = (dx / d) * R; dy = (dy / d) * R; }
     knob.style.transform = `translate(${dx}px, ${dy}px)`;
     const norm=Math.min(1,Math.hypot(dx,dy)/R);
-    const strength=norm<.12?0:Math.pow((norm-.12)/.88,1.15);
+    const strength=norm<.07?0:Math.pow((norm-.07)/.93,1.0);
     const k=norm>0?strength/(norm*R):0;
     joy.x=dx*k;joy.y=-dy*k;
     sync();

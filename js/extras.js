@@ -279,22 +279,50 @@ export function buildExtras(ctx) {
   // Corner plant (grows when watered)
   // =====================================================================
   const plant = new THREE.Group(); plant.position.set(-4.25, 0, -4.25); scene.add(plant);
-  mesh(new THREE.CylinderGeometry(0.38, 0.3, 0.62, 24), std(0xe4d6c3, { roughness: 0.8 }), 0, 0.31, 0, plant);
-  mesh(new THREE.CircleGeometry(0.35, 24), std(0x3b2a1e), 0, 0.6, 0, plant).rotation.x = -Math.PI / 2;
-  const foliage = new THREE.Group(); foliage.position.y = 0.6; plant.add(foliage);
-  for (let k = 0; k < 11; k++) {
-    const a = (k / 11) * Math.PI * 2;
-    const len = 0.9 + (k % 3) * 0.25;
-    const top = new THREE.Vector3(Math.cos(a) * 0.45, len, Math.sin(a) * 0.45);
-    rod(new THREE.Vector3(0, 0, 0), top, 0.015, std(0x3e6b3f), foliage);
-    const leaf = mesh(new THREE.SphereGeometry(0.28, 12, 8), std(k % 2 ? 0x3f7a4f : 0x5b9a5f, { roughness: 0.7, flatShading: true }), top.x, top.y, top.z, foliage);
-    leaf.scale.set(1, 0.18, 0.62);
-    leaf.rotation.set(0.3, -a, 0.5);
+  // Sculpted ceramic planter with a proper rim, recessed soil, and organic foliage.
+  const ceramic=new THREE.MeshStandardMaterial({color:0x39352e,roughness:.61,metalness:.08,map:TX.ceramicTexture(),bumpMap:TX.ceramicTexture(),bumpScale:.021});
+  const profilePoints=[[0,0],[.26,0],[.29,.025],[.34,.12],[.405,.49],[.407,.59],[.395,.635],[.365,.65],[.342,.626],[.345,.565]].map(([x,y])=>new THREE.Vector2(x,y));
+  mesh(new THREE.LatheGeometry(profilePoints,48),ceramic,0,0,0,plant);
+  const soil=mesh(new THREE.CircleGeometry(.349,40),new THREE.MeshStandardMaterial({color:0x63503b,map:TX.ceramicTexture(),roughness:1}),0,.565,0,plant);
+  soil.rotation.x=-Math.PI/2;
+  const foliage=new THREE.Group();foliage.position.y=.57;plant.add(foliage);
+  // Curved pointed leaves, with a raised midrib and photographic-style vein texture.
+  // Instancing keeps all leaves and all stalks to two draw calls on mobile.
+  function leafGeometry(){
+    const verts=[],uv=[],indices=[],rows=18,cols=8;
+    for(let i=0;i<=rows;i++){
+      const t=i/rows, width=.155*Math.pow(Math.sin(Math.PI*t),.78)*(1+.09*Math.sin(t*12));
+      for(let j=0;j<=cols;j++){
+        const u=j/cols,s=u*2-1;
+        verts.push(s*width,t*.52, .075*Math.sin(Math.PI*t)*(1-s*s)-.10*t*t+.022*s*s*Math.sin(t*8));
+        uv.push(u,t);
+      }
+    }
+    for(let i=0;i<rows;i++)for(let j=0;j<cols;j++){const k=i*(cols+1)+j;indices.push(k,k+1,k+cols+1,k+1,k+cols+2,k+cols+1);}
+    const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));geo.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));geo.setIndex(indices);geo.computeVertexNormals();return geo;
   }
+  const leavesCount=28,leafMat=new THREE.MeshPhysicalMaterial({color:0xffffff,map:TX.leafTexture(),bumpMap:TX.leafTexture(),bumpScale:.012,roughness:.68,clearcoat:.08,clearcoatRoughness:.65,side:THREE.DoubleSide});
+  const leaves=new THREE.InstancedMesh(leafGeometry(),leafMat,leavesCount);
+  const stalks=new THREE.InstancedMesh(new THREE.CylinderGeometry(.008,.013,1,7),std(0x50613a,{roughness:.87}),leavesCount);
+  const obj=new THREE.Object3D(),up=new THREE.Vector3(0,1,0),dir=new THREE.Vector3();
+  for(let k=0;k<leavesCount;k++){
+    const angle=k*2.39996323, layer=k%7, reach=.13+.44*(layer/6), height=.42+layer*.17+.10*Math.sin(k*1.7);
+    const end=new THREE.Vector3(Math.cos(angle)*reach,height,Math.sin(angle)*reach);
+    obj.position.copy(end).multiplyScalar(.5);obj.quaternion.setFromUnitVectors(up,end.clone().normalize());obj.scale.set(1,end.length(),1);obj.updateMatrix();stalks.setMatrixAt(k,obj.matrix);
+    dir.set(Math.cos(angle)*.88,.38-.48*(layer/6),Math.sin(angle)*.88).normalize();
+    obj.position.copy(end);obj.quaternion.setFromUnitVectors(up,dir);obj.rotateY(Math.sin(k*2.7)*.45);
+    const size=.72+.37*(.5+.5*Math.sin(k*5.2));obj.scale.set(size,size,size);obj.updateMatrix();leaves.setMatrixAt(k,obj.matrix);
+    leaves.setColorAt(k,new THREE.Color().setHSL(.27+(k%5)*.009,.43,.29+(k%6)*.025));
+  }
+  leaves.instanceMatrix.needsUpdate=true;stalks.instanceMatrix.needsUpdate=true;leaves.instanceColor.needsUpdate=true;
+  leaves.castShadow=true;leaves.receiveShadow=true;stalks.castShadow=true;stalks.receiveShadow=true;
+  foliage.add(leaves,stalks);
+  // Explicit lightweight target for the foliage; actual pot remains selectable.
+  const plantHit=hitBox(plant,1.38,2.08,1.38,0,1.20,0);plantHit.userData.interactionProxy=true;
   let growth = 1;
   try { growth = Math.min(1.35, Math.max(1, parseFloat(localStorage.getItem('room.plantGrowth')) || 1)); } catch { /* storage unavailable */ }
   foliage.scale.setScalar(growth);
-  register(plant, { kind: 'plant', index: 0, label: 'Thirsty plant — water me' }, { dir: new THREE.Vector3(0, 0, 0), selectOffset: 0, hoverOffset: 0 });
+  register(plant, { kind: 'plant', index: 0, label: 'Water the plant' }, { dir: new THREE.Vector3(0, 0, 0), selectOffset: 0, hoverOffset: 0 });
   anchors.plant = () => plant.position.clone().add(new THREE.Vector3(0.3, 2.2 * growth, 0.3));
   let wiggle = 0;
 
