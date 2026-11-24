@@ -573,3 +573,29 @@ export function createForestVista(){
   }
   update(0);return {texture:tex,setNight(n){darkness=n;},update};
 }
+
+let vaporMap,wickerMap;
+export function vaporTexture(){
+  if(vaporMap)return vaporMap;
+  const [c,x]=canvas(128,256),a=x.createImageData(128,256);
+  for(let y=0;y<256;y++)for(let i=0;i<128;i++){
+    const v=y/255,u=(i-63.5)/64,center=.22*Math.sin(v*9)+.10*Math.sin(v*19);
+    const width=.065+.18*v,core=Math.exp(-Math.pow((u-center)/width,2)*1.5);
+    const filament=Math.exp(-Math.pow((u-center+.07*Math.sin(v*13))/(width*.5),2)*1.3);
+    const envelope=Math.pow(Math.sin(Math.PI*v),1.1)*Math.pow(Math.max(0,1-Math.abs(u)),1.7);
+    const k=(y*128+i)*4;a.data[k]=a.data[k+1]=a.data[k+2]=255;a.data[k+3]=Math.round(255*Math.min(1,(core*.65+filament*.35)*envelope));
+  }
+  x.putImageData(a,0,0);return vaporMap=toTexture(c,{aniso:2});
+}
+export function wickerTexture(){
+  if(wickerMap)return wickerMap;
+  const [c,x]=canvas(256,256),a=x.createImageData(256,256),r=rng(712);
+  for(let y=0;y<256;y++)for(let i=0;i<256;i++){
+    const row=Math.floor(y/8),col=Math.floor(i/16),over=(row+col)%2===0;
+    const curve=Math.sin(Math.PI*(over?y%8/8:i%16/16));
+    const edge=(y%8===0||i%16===0)?.72:1;
+    const val=(130+curve*83+r()*13)*edge;
+    const k=(y*256+i)*4;a.data[k]=val;a.data[k+1]=val*.83;a.data[k+2]=val*.62;a.data[k+3]=255;
+  }
+  x.putImageData(a,0,0);return wickerMap=toTexture(c,{repeat:[3,3]});
+}

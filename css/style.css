@@ -972,3 +972,5 @@ body.touch .joy{touch-action:none;user-select:none;-webkit-user-select:none}
 .book-toolbar{background:#211b14db;border-radius:8px;padding:6px 10px;margin:7px 0}.book-toolbar button{min-height:36px}
 #catActions{position:fixed;z-index:30;right:14px;bottom:205px;display:flex;gap:6px}#catActions[hidden]{display:none}#catActions button{padding:10px 12px;border-radius:22px;background:#30251e;color:#fff;border:1px solid #a68c68;cursor:pointer}
 @media(max-width:650px){#roomBook{width:96vw;padding-bottom:15vh}.book-spread{grid-template-columns:1fr 1fr;padding:7px 7px 13px}.book-page{font-size:clamp(11px,2.9vw,15px);padding:12px 10px;max-height:52dvh}.book-page h2{font-size:clamp(17px,4.7vw,25px)}.book-page h3{font-size:15px}.book-page img{max-height:120px}.book-note,.book-page figcaption{font-size:10px}#bookPreview iframe{height:220px}.book-toolbar{font-size:11px}.book-toolbar button{padding:7px 9px}}
+
+#avatarSettings{display:block;margin-top:9px;font-size:12px}#avatarStatus{color:#c8bca8;margin-top:5px;overflow-wrap:anywhere}

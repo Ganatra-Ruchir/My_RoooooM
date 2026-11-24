@@ -10,7 +10,11 @@ export async function readLocalAvatar(){
   try{const db=await database(); const file=await new Promise((resolve,reject)=>{
     const tx=db.transaction(STORE,'readonly'), req=tx.objectStore(STORE).get(KEY);
     req.onsuccess=()=>resolve(req.result||null); req.onerror=()=>reject(req.error);
-  });db.close(); if(file)document.getElementById('localAvatarCredit').hidden=false;return file;}
+  });db.close();
+    const credit=document.getElementById('localAvatarCredit'),status=document.getElementById('avatarStatus');
+    if(credit)credit.hidden=!file;
+    if(status)status.textContent=file?'Private VRM selected: '+file.name:'Using the public placeholder. Choose your VRM to replace it on this device.';
+    return file;}
   catch{return null;}
 }
 export function wireLocalAvatar(){

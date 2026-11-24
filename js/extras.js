@@ -349,10 +349,7 @@ export function buildExtras(ctx) {
     vinyl.rotation.y -= dt * 3.5 * playAmt;
     arm.rotation.y = 0.38 * playAmt;
     speaker.scale.setScalar(1 + (playing ? Math.max(0, Math.sin(t * 7.8)) * 0.02 : 0));
-    if (playing && t - lastNote > 0.7) {
-      lastNote = t;
-      spawn('note', music.localToWorld(new THREE.Vector3(0, 0.45, (Math.random() - 0.5) * 0.6)), { rise: 0.9, life: 2.2, size: 0.14, drift: [0.45, (Math.random() - 0.5) * 0.3] });
-    }
+    // The spinning record and audible music are the feedback; no floating cartoon notes.
 
     // phone buzzes every so often (much less once it's been opened)
     phoneSt.now = t;
@@ -407,9 +404,8 @@ export function buildExtras(ctx) {
         try { localStorage.setItem('room.plantGrowth', String(growth)); } catch { /* ignore */ }
         wiggle = 1;
         for (let i = 0; i < 9; i++) {
-          spawn('drop', plant.position.clone().add(new THREE.Vector3((Math.random() - 0.5) * 0.7, 1.6 + Math.random() * 0.5, (Math.random() - 0.5) * 0.7)), { rise: -1.0, life: 0.9 + Math.random() * 0.3, size: 0.12 });
+          spawn('drop', plant.position.clone().add(new THREE.Vector3((Math.random() - 0.5) * 0.7, 1.6 + Math.random() * 0.5, (Math.random() - 0.5) * 0.7)), { rise: -1.0, life: 0.9 + Math.random() * 0.3, size: 0.035 });
         }
-        spawn('spark', plant.position.clone().add(new THREE.Vector3(0.2, 2.1 * growth, 0.2)), { rise: 0.4, life: 1.2, size: 0.22 });
         return growth;
       }
       default: return false;

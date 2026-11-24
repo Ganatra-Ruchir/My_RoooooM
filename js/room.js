@@ -11,11 +11,6 @@ import { createNPCSystem } from './npc.js';
 import { createFirstPersonArms } from './first-person.js';
 import { createRealCharacters } from './real-characters.js';
 import { guidedTourPlan } from './guided-tour.js';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { loadPhotographicProp, propStatus } from './photographic-props.js';
 
@@ -59,26 +54,10 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     env.dispose(); pmrem.dispose();
   } catch (err) { console.warn('Indoor reflection environment unavailable',err); }
   const camera = new THREE.PerspectiveCamera(32, 1, 0.065, 200);
-  // Restrained bloom lifts neon, watch highlights and warm practical lights.
-  // Skip post FX on touch / low-memory devices to protect frame rate.
-  const cinematic = !lowPower && !reducedMotion;
-  const composer = cinematic ? new EffectComposer(renderer) : null;
-  if (composer) {
-    composer.addPass(new RenderPass(scene, camera));
-    // Screen-space ambient occlusion puts realistic contact shadows between
-    // furniture, floor, body and wall. Only use it on reasonably capable GPUs.
-    if (renderer.capabilities.isWebGL2) {
-      const ao = new GTAOPass(scene, camera, 512, 288);
-      ao.updateGtaoMaterial({
-        radius: 0.19, distanceExponent: 1.45, thickness: 1.05,
-        scale: 1.14, samples: 10,
-      });
-      composer.addPass(ao);
-    }
-    // Subtle lens bloom; very bright halos made the previous room look cartoonish.
-    // Deliberately no bloom or depth of field: preserve edge and text sharpness.
-    composer.addPass(new OutputPass());
-  }
+  // Direct rendering preserves transparency. The r160 GTAO override pass can
+  // treat transparent billboard/proxy geometry as solid rectangles.
+  // Keep real shadow maps and contact shadows, without the problematic pass.
+  const composer = null;
   const controls = new OrbitControls(camera, canvas);
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
@@ -491,14 +470,22 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     buildRoots.push(root);
   });
   // bottom shelf: woven baskets and a stack of books
-  const basket = std(0xc59a62, { roughness: 1 });
-  for (const x of [-1.05, -0.05]) {
-    mesh(rbox(0.9, 0.62, 0.56, 0.05), basket, x, levelTop(0) + 0.31, 0.02, shelf);
-    for (let k = 0; k < 4; k++) mesh(box(0.92, 0.03, 0.58), std(0xa77d4a), x, levelTop(0) + 0.1 + k * 0.14, 0.02, shelf, { cast: false });
+  const wickerMap=TX.wickerTexture();
+  const basket=std(0x9d7952,{map:wickerMap,bumpMap:wickerMap,bumpScale:.018,roughness:.94});
+  const basketRim=std(0x705033,{map:TX.fineWoodTexture(),roughness:.82});
+  for(const x of [-1.05,-.05]){
+    mesh(rbox(.88,.57,.54,.055),basket,x,levelTop(0)+.285,.02,shelf);
+    mesh(rbox(.90,.055,.56,.018),basketRim,x,levelTop(0)+.575,.02,shelf,{cast:false});
+    mesh(rbox(.35,.115,.012,.012),std(0x33271b,{roughness:.95}),x,levelTop(0)+.43,.297,shelf,{cast:false});
+    mesh(rbox(.25,.047,.02,.01),basketRim,x,levelTop(0)+.445,.308,shelf,{cast:false});
   }
-  ['#2e5b52', '#efe2cc', '#c2562f', '#2f5d8a'].forEach((c, k) => {
-    const bk = mesh(box(0.7 - k * 0.04, 0.1, 0.5), std(c), 1.05, levelTop(0) + 0.05 + k * 0.1, 0.03, shelf);
-    bk.rotation.y = (k % 2 ? 0.08 : -0.06);
+  ['#33443a','#756044','#563d32','#39444c'].forEach((c,k)=>{
+    const bk=new THREE.Group();bk.position.set(1.05,levelTop(0)+.055+k*.11,.03);bk.rotation.y=k%2?.08:-.06;shelf.add(bk);
+    const w=.70-k*.04,d=.5,cover=std(new THREE.Color(c),{map:fabricGrain,bumpMap:fabricGrain,bumpScale:.009,roughness:.9});
+    const paper=std(0xc9b997,{map:TX.paperEdgesTexture(),roughness:.97});
+    mesh(rbox(w-.025,.08,d-.025,.009),paper,0,0,0,bk);
+    for(const yy of [-.049,.049])mesh(rbox(w,.018,d,.006),cover,0,yy,0,bk,{cast:false});
+    mesh(rbox(w,.105,.045,.014),cover,0,0,d/2-.018,bk,{cast:false});
   });
   // second shelf decor: camera (photography hobby) + framed photo
   const camBody = std(0x1f1f22, { roughness: 0.4 });
@@ -606,14 +593,14 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   mesh(new THREE.CircleGeometry(.073,36),std(0x28180f,{roughness:.2,envMapIntensity:.62}),0,.174, 0, mugG).rotation.x = -Math.PI / 2;
   const handle = mesh(new THREE.TorusGeometry(0.055, 0.016, 8, 16, Math.PI), mugCeramic, .09,.1,0,mugG);
   handle.rotation.z = -Math.PI / 2;
-  const steamTex = TX.softDotTexture();
+  // Fine translucent vapor, based on photographed hot coffee: narrow
+  // near the surface, curling and dissipating upward. No solid sprite quads.
+  const steamTex = TX.vaporTexture();
   const steam = [];
-  for (let k = 0; k < 4; k++) {
-    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: steamTex, transparent: true, opacity: 0, depthWrite: false }));
-    sp.raycast = () => {};
-    sp.userData.phase = k / 4;
-    mugG.add(sp);
-    steam.push(sp);
+  for (let k = 0; k < 5; k++) {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ color:0xf0eee8,map:steamTex,transparent:true,opacity:0,depthWrite:false,depthTest:true,toneMapped:false,blending:THREE.NormalBlending }));
+    sp.raycast=()=>{};sp.userData.phase=k/5;sp.userData.vapor=true;
+    mugG.add(sp);steam.push(sp);
   }
 
   // open notebook + pen (where the drafts start)
@@ -711,6 +698,8 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
       if (id === 'ruchir') {
         if (charUrl) { scene.remove(rig.root); return; } // query-string standee remains an explicit override
         ruchir.real = rig;
+        const avatarStatus=document.getElementById('avatarStatus');
+        if(avatarStatus&&localAvatar)avatarStatus.textContent='Custom VRM active: '+localAvatar.name;
         ruchir.pos.copy(STANDEE_POS);
         avatar.person.visible = false;
         avatar.person.traverse(o => { if (o.isMesh) o.raycast = () => {}; });
@@ -734,7 +723,11 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
       console.error(id === 'maya'
         ? 'Meera VRM could not be loaded; guide remains hidden (no impostor avatar).'
         : 'Realistic character could not load, using fallback:', id, error);
-      if (id === 'ruchir' && !charUrl) avatar.person.visible = true;
+      if (id === 'ruchir' && !charUrl) {
+        avatar.person.visible=true;
+        const avatarStatus=document.getElementById('avatarStatus');
+        if(avatarStatus&&localAvatar)avatarStatus.textContent='Custom VRM failed to load. Select the original VRM again.';
+      }
     },
   });
   if (!charUrl) realCharacters.load('ruchir', [STANDEE_POS.x, STANDEE_POS.z], { outfit: 'shirt', scale: 1.56, localAvatar });
@@ -1409,6 +1402,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     if(coffeeHeld||heldBook||extras.catHeld||guided.active)return false;
     coffeeSource=index===1?cupG:mugG;
     coffeeHeld=coffeeSource.clone(true);
+    for(const child of [...coffeeHeld.children])if(child.userData.vapor)coffeeHeld.remove(child);
     coffeeHeld.traverse(o=>{if(o.isMesh)o.raycast=()=>{};});
     coffeeSource.visible=false;scene.add(coffeeHeld);coffeeTime=0;
     return true;
@@ -1703,10 +1697,12 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     }
 
     steam.forEach((sp) => {
-      const k = (t * 0.35 + sp.userData.phase) % 1;
-      sp.position.set(Math.sin((k + sp.userData.phase) * 7) * 0.04, 0.22 + k * 0.5, 0);
-      sp.material.opacity = Math.sin(k * Math.PI) * 0.35;
-      sp.scale.setScalar(0.08 + k * 0.16);
+      const k=(t*.23+sp.userData.phase)%1;
+      const spread=.008+k*.035;
+      sp.position.set(Math.sin(k*8+t*.48+sp.userData.phase*7)*spread,.20+k*.38,Math.cos(k*5+t*.38)*spread*.4);
+      sp.material.opacity=Math.pow(Math.sin(k*Math.PI),1.4)*.105*(1-k*.6);
+      sp.material.rotation=Math.sin(t*.55+sp.userData.phase*7)*.45;
+      sp.scale.set(.062+k*.10,.125+k*.16,1);
     });
     extras.update(t, dt, { camera });
     lid.rotation.x=THREE.MathUtils.damp(lid.rotation.x,laptopOpen?.28:-Math.PI/2,7,dt);
