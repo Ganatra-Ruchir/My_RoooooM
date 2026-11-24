@@ -1,10 +1,10 @@
 // Cinematic, conversational two-beat narration for the same interactive room.
-// Each scene has a spoken introduction (Mira on camera) and, where useful,
+// Each scene has a spoken introduction (Meera on camera) and, where useful,
 // a reveal line (camera pans to the item she is describing).
 // Keep factual claims grounded in js/data.js; never invent achievements.
 const words = (text) => String(text || '').trim().split(/\s+/).filter(Boolean).length;
 const duration = (text, minimum = 5) =>
-  !text ? 0 : Math.max(minimum, Math.ceil(words(text) / 2.55 + 1.2));
+  !text ? 0 : Math.max(minimum, Math.ceil(words(text) / 2.1 + 1.3));
 
 export function guidedTourPlan({ profile, projects, workbench, certificates, articles }) {
   const projectNames = projects.slice(0, 2).map(p => p.title);
@@ -17,7 +17,7 @@ export function guidedTourPlan({ profile, projects, workbench, certificates, art
       id: 'welcome', title: 'Welcome to Ruchir’s Room', category: 'WELCOME',
       pos: [3.9, 2.95], look: [3.6, 2.63, 1.35], guide: [1.19, 2.25],
       tags: ['First-person experience', 'Meet the creator'],
-      speakerSay: "Hey, welcome in! I'm Mira, and I'll show you around Ruchir's room.",
+      speakerSay: "Hey, welcome in! I'm Meera, and I'll show you around Ruchir's room.",
       exhibitSay: '',
       outroSay: "This isn't an ordinary portfolio. Each part of the room has something to show you. Come on, let me introduce you.",
     },
@@ -26,8 +26,8 @@ export function guidedTourPlan({ profile, projects, workbench, certificates, art
       pos: [3.7, 0.3], look: [-0.75, 2.6, -1.85], guide: [3.16, -1.26],
       image: profile.photo,
       tags: ['Ahmedabad', 'Information Technology', 'Digital systems'],
-      speakerSay: "See the person over there? That's Ruchir Ganatra—the one who built all this.",
-      exhibitSay: "He's based in Ahmedabad and studies Information Technology. He works with real programme data, creates dashboards, and builds apps that make complicated information easier to use.",
+      speakerSay: "Let me introduce you to the person who built all this. See him over there?",
+      exhibitSay: "This is Ruchir Ganatra. He's based in Ahmedabad and studies Information Technology. He works with real programme data, creates dashboards, and builds apps that make complicated information easier to use.",
     },
     {
       id: 'tools', title: 'The tools he uses', category: 'TECHNICAL SKILLS',
@@ -105,11 +105,17 @@ export function guidedTourPlan({ profile, projects, workbench, certificates, art
     const exhibitSay = step.exhibitSay || '';
     const speakerSeconds = duration(speakerSay, 6);
     const exhibitSeconds = duration(exhibitSay, 7);
-    const seconds = speakerSeconds + exhibitSeconds + 1.6;
+    // Silent travel and camera settling precede the first line. The reveal
+    // gets its own pan before narration starts, rather than stealing speaking time.
+    const travelSeconds = step.id === 'welcome' ? 1.8 : 3.6;
+    const speakerStart = travelSeconds + 1.0;
+    const revealStart = speakerStart + speakerSeconds;
+    const exhibitStart = revealStart + (exhibitSay ? 1.65 : 0);
+    const seconds = exhibitStart + exhibitSeconds + 0.75;
     return {
       ...step, speakerSay, exhibitSay, say: [speakerSay, exhibitSay].filter(Boolean).join(' '),
-      seconds,
-      beatSwitch: exhibitSay ? (speakerSeconds + 0.7) / seconds : 1,
+      seconds, travelSeconds, speakerStart, speakerSeconds, revealStart, exhibitStart, exhibitSeconds,
+      beatSwitch: exhibitSay ? exhibitStart / seconds : 1,
     };
   });
 }

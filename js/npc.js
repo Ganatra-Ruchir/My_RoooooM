@@ -5,7 +5,7 @@ import { collide } from './player.js';
 
 const PEOPLE = [
   {
-    name: 'Mira', role: 'Cinematic room guide',
+    name: 'Meera', role: 'Cinematic room guide',
     seed: 17, skin: 0xc78d68, hair: 0x201815, jacket: 0x715747, shirt: 0xe8cbb7, pants: 0x282833,
     waypoints: [[2.75, -2.8], [3.45, -0.8], [3.65, 1.25], [2.5, 3.6]],
     lines: [

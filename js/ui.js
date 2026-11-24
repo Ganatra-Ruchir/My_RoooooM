@@ -657,7 +657,7 @@ export function createUI({ room = null }) {
   if (!('speechSynthesis' in window)) tourVoice.hidden = true;
   tourVoice?.addEventListener('click', () => {
     voiceEnabled = !voiceEnabled;
-    tourVoice.textContent = voiceEnabled ? 'Mute Mira' : '◉ Hear Mira';
+    tourVoice.textContent = voiceEnabled ? 'Mute Meera' : '◉ Hear Meera';
     tourVoice.setAttribute('aria-pressed', String(voiceEnabled));
     if (!voiceEnabled) window.speechSynthesis?.cancel();
     else if (currentNarration) speakGuide(currentNarration);
@@ -671,6 +671,9 @@ export function createUI({ room = null }) {
     tourPanel.hidden = false;
     $('#tourBar').style.width = '0%';
     $('#tourProgress').setAttribute('aria-valuenow', '0');
+    $('#tourFocus').hidden = true;
+    $('#tourStopTitle').textContent = 'Meet your room guide';
+    currentNarration = '';
   }
   function showTourStep(step) {
     if (!step || !tourPanel) return;
@@ -686,10 +689,10 @@ export function createUI({ room = null }) {
       tags.appendChild(badge);
     });
     const focus = $('#tourFocus'), focusImage = $('#tourFocusImage');
-    focus.hidden = !step.image;
-    if (step.image) focusImage.src = step.image;
+    focus.hidden = !step.image || step.beat !== 'exhibit';
+    if (step.image && step.beat === 'exhibit') focusImage.src = step.image;
     currentNarration = step.text;
-    showNpcLine(0, 'Mira · Your guide: ' + step.text, (step.seconds + 0.25) * 1000);
+    showNpcLine(0, 'Meera · Your guide: ' + step.text, (step.seconds + 0.25) * 1000);
     speakGuide(step.text);
   }
   function updateTourProgress() {
@@ -704,7 +707,7 @@ export function createUI({ room = null }) {
     tourFinished.hidden = false;
     playing = false; // explicit Start Exploring click grants real pointer-lock permission
     if (voiceEnabled) window.speechSynthesis?.cancel();
-    showNpcLine(0, 'Mira · Your guide: The tour is complete. Click Start Exploring to take control.', 8000);
+    showNpcLine(0, 'Meera · Your guide: The tour is complete. Click Start Exploring to take control.', 8000);
   }
   $('#tourExploreBtn')?.addEventListener('click', () => {
     tourFinished.hidden = true;

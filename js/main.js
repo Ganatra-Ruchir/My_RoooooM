@@ -102,7 +102,7 @@ async function boot() {
     if (started) return;
     started = true;
     clearInterval(ticker);
-    if (msg) msg.textContent = "Loading Mira's 3D character";
+    if (msg) msg.textContent = "Loading Meera's 3D character";
     // Do not begin camera narration before the real guide exists. The tour
     // cannot silently swap a 2D portrait for a different-looking 3D person.
     const guide = await Promise.race([
@@ -115,7 +115,7 @@ async function boot() {
       ui.beginGuidedTour();
       room.startGuidedTour();
     } else {
-      console.warn("Mira's 3D file was unavailable; no fake substitute will be shown.");
+      console.warn("Meera's 3D file was unavailable; no fake substitute will be shown.");
       ui.showStart();
     }
     setTimeout(hideLoader, 250);

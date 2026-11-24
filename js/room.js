@@ -605,7 +605,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
       } else {
         const index = id === 'maya' ? 0 : 1;
         npcSystem.attachVisual(index, rig.root);
-        register(rig.root, { kind: 'npc', index, label: 'Talk to ' + (index ? 'Dev' : 'Mira') },
+        register(rig.root, { kind: 'npc', index, label: 'Talk to ' + (index ? 'Dev' : 'Meera') },
           { dir: new THREE.Vector3(), selectOffset: 0, hoverOffset: 0 });
       }
     },
@@ -617,7 +617,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
     },
   });
   if (!charUrl) realCharacters.load('ruchir', [STANDEE_POS.x, STANDEE_POS.z], { outfit: 'shirt', scale: 1.56 });
-  // Mira is the entire introduction. Load her model immediately and expose the
+  // Meera is the entire introduction. Load her model immediately and expose the
   // promise so the opening scene never shows an empty avatar or a substituted 2D still.
   const guideReady = realCharacters.load('maya', [2.75, -2.8], {
     outfit: 'tee', scale: 1.55, tint: '#b4c9a4',
@@ -860,7 +860,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
     const speaker = beat === 'speaker';
     const text = speaker ? item.speakerSay : item.exhibitSay;
     if (!text) return;
-    const seconds = item.seconds * (speaker ? item.beatSwitch : 1 - item.beatSwitch);
+    const seconds = speaker ? item.speakerSeconds : item.exhibitSeconds;
     hooks.onTourStep?.({
       index, total: tourPlan.length,
       title: item.title, category: item.category, tags: item.tags,
@@ -872,7 +872,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
     if (mode !== 'follow') setMode('follow');
     guided.active = true;
     guided.index = 0; guided.elapsed = 0; guided.total = 0;
-    guided.beat = 'speaker'; guided.fov = 80;
+    guided.beat = 'travel'; guided.fov = 80;
     fp.blend = 1; // absolutely no old overview-camera interpolation during the tour
     guided.from.set(player.pos.x, player.pos.z);
     guided.last.copy(guided.from);
@@ -885,7 +885,6 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
     camera.updateProjectionMatrix();
     const start = tourPlan[0];
     npcSystem.setTourGuide(0, start.guide[0], start.guide[1], true);
-    announceTourStop(0);
     return true;
   }
   function finishGuidedTour() {
@@ -897,7 +896,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
     hooks.onTourFinished?.();
   }
   const shortestAngle = (a, b) => Math.atan2(Math.sin(b - a), Math.cos(b - a));
-  // Camera grammar: travel → close-up on speaking Mira → optical zoom
+  // Camera grammar: travel → close-up on speaking Meera → optical zoom
   // onto the real 3D item/wall. Both shots come from the visitor's eyes.
   function updateGuidedTour(dt) {
     if (!guided.active) return;
@@ -911,12 +910,10 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
       if (guided.index >= tourPlan.length) { finishGuidedTour(); return; }
       stop = tourPlan[guided.index];
       guided.from.set(player.pos.x, player.pos.z);
-      guided.beat = 'speaker';
-      announceTourStop(guided.index, 'speaker');
+      guided.beat = 'travel';
     }
     const t = Math.max(0, Math.min(1, guided.elapsed / stop.seconds));
-    const travelFrac = Math.min(0.30, 3.6 / stop.seconds);
-    const travelK = ease(Math.min(1, t / travelFrac));
+    const travelK = ease(Math.min(1, guided.elapsed / stop.travelSeconds));
     player.pos.x = THREE.MathUtils.lerp(guided.from.x, stop.pos[0], travelK);
     player.pos.z = THREE.MathUtils.lerp(guided.from.y, stop.pos[1], travelK);
     collide(player.pos);
@@ -940,13 +937,20 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
     guided.face.y -= 0.13;
     const target = new THREE.Vector3(stop.look[0], stop.look[1], stop.look[2]);
     const hasExhibit = !!stop.exhibitSay;
-    if (hasExhibit && t >= stop.beatSwitch && guided.beat !== 'exhibit') {
+    if (guided.beat === 'travel' && guided.elapsed >= stop.speakerStart) {
+      guided.beat = 'speaker';
+      announceTourStop(guided.index, 'speaker');
+    }
+    if (hasExhibit && guided.beat === 'speaker' && guided.elapsed >= stop.revealStart) {
+      guided.beat = 'reveal';
+    }
+    if (hasExhibit && guided.beat === 'reveal' && guided.elapsed >= stop.exhibitStart) {
       guided.beat = 'exhibit';
       announceTourStop(guided.index, 'exhibit');
     }
-    // Smooth change of attention (like a movie's motivated rack-and-pan shot).
+    // Finish the motivated pan BEFORE the line identifying the exhibit begins.
     const revealBlend = hasExhibit
-      ? ease(Math.max(0, Math.min(1, (t - stop.beatSwitch + 0.015) / 0.23)))
+      ? ease(Math.max(0, Math.min(1, (guided.elapsed - stop.revealStart) / 1.05)))
       : 0;
     guided.focus.lerpVectors(guided.face, target, revealBlend);
     const dx = guided.focus.x - player.pos.x;
@@ -966,7 +970,8 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
       THREE.MathUtils.radToDeg(2 * Math.atan(1.72 / (2 * faceDistance))), 34, 58);
     const exhibitDistance = Math.hypot(target.x - player.pos.x, target.z - player.pos.z);
     const exhibitFov = THREE.MathUtils.clamp(68 - Math.max(0, exhibitDistance - 2.4) * 4.2, 42, 66);
-    const zoomIn = ease(Math.max(0, Math.min(1, (t - travelFrac * 0.70) / 0.17)));
+    const zoomIn = ease(Math.max(0, Math.min(1,
+      (guided.elapsed - stop.travelSeconds * 0.45) / (stop.travelSeconds * 0.55))));
     const faceShotFov = THREE.MathUtils.lerp(78, faceFov, zoomIn);
     const desiredFov = THREE.MathUtils.lerp(faceShotFov, exhibitFov, revealBlend);
     guided.fov = THREE.MathUtils.damp(guided.fov, desiredFov, 3.6, dt);
@@ -1365,7 +1370,8 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false }) 
     const npcMove = (state) => state === 'roam' ? 'Walk' : state === 'greet' ? 'Wave' : state === 'converse' ? 'Talk' : state === 'observe' ? 'Think' : 'Idle';
     realCharacters.update(t, dt, {
       ruchir: talking ? 'Talk' : t < greetUntil ? 'Wave' : 'Idle',
-      maya: guided.active ? (npcSystem.getState(0) === 'roam' ? 'Walk' : 'Talk') : npcMove(npcSystem.getState(0)),
+      maya: guided.active ? (npcSystem.getState(0) === 'roam' ? 'Walk' :
+        (guided.beat === 'speaker' || guided.beat === 'exhibit') ? 'Talk' : 'Idle') : npcMove(npcSystem.getState(0)),
       dev: npcMove(npcSystem.getState(1)),
     }, visitorHead);
     const avatarHot = !!hovered && ['avatar', 'talk'].includes(hovered.userData.hit.kind);
