@@ -3,7 +3,8 @@
 import * as THREE from 'three';
 export function createFirstPersonArms() {
   const root = new THREE.Group();
-  root.name = 'ruchir-first-person-arms';
+  root.name='ruchir-first-person-arms';root.userData.noInteractionRay=true;
+  const body=new THREE.Group();body.name='first-person-lower-body';body.userData.noInteractionRay=true;body.visible=false;
   const mat = (color, options = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.8, ...options });
   const shirt = mat(0xf3efe9, { roughness: 0.91, side: THREE.DoubleSide });
   const folds = mat(0xd7d0c6, { roughness: 0.94 });
@@ -11,7 +12,8 @@ export function createFirstPersonArms() {
   const metal = mat(0xadb5bf, { metalness: 0.83, roughness: 0.22 });
   const face = mat(0x29323b, { metalness: 0.68, roughness: 0.23 });
   const ring = mat(0x24252a, { metalness: 0.7, roughness: 0.24 });
-  const hands = [];
+  const hands = [], legs=[];
+  const denim=mat(0x283b50,{roughness:.92}),seam=mat(0x39485a,{roughness:1}),shoe=mat(0x33302a,{roughness:.72}),sole=mat(0x191b1c,{roughness:.94});
   function add(parent, geo, material, x = 0, y = 0, z = 0) {
     const mesh = new THREE.Mesh(geo, material);
     mesh.position.set(x, y, z);
@@ -49,6 +51,29 @@ export function createFirstPersonArms() {
     thumb.rotation.z=side*.66;thumb.rotation.x=-.55;
     hands.push(arm);
   }
+  // Lower body is world-aligned: feet stay on the floor, not attached to head pitch.
+  for(const side of [-1,1]){
+    const thigh=new THREE.Group();thigh.position.set(side*.16,1.34,0);body.add(thigh);
+    add(thigh,new THREE.CapsuleGeometry(.137,.48,6,16),denim,0,-.30,0);
+    add(thigh,new THREE.CapsuleGeometry(.014,.49,4,8),seam,side*.13,-.28,0);
+    const shin=new THREE.Group();shin.position.y=-.65;thigh.add(shin);
+    add(shin,new THREE.CapsuleGeometry(.104,.43,6,16),denim,0,-.25,0);
+    const foot=new THREE.Group();foot.position.set(0,-.60,-.09);shin.add(foot);
+    add(foot,new THREE.SphereGeometry(.14,20,14),shoe,0,.02,-.06).scale.set(.82,.52,1.65);
+    add(foot,new THREE.BoxGeometry(.21,.042,.39),sole,0,-.036,-.065);
+    legs.push({thigh,shin,foot});
+  }
+  function updateBody(t,dt,pos,yaw,pitch,speed,seated){
+    body.visible=pitch<-.24;body.position.copy(pos);body.rotation.y=yaw;
+    const stride=THREE.MathUtils.clamp(speed/2,0,1);
+    legs.forEach(({thigh,shin,foot},i)=>{
+      const swing=Math.sin(t*6.5+i*Math.PI)*stride*.28;
+      thigh.position.y=seated?.96:1.34;
+      thigh.rotation.x=THREE.MathUtils.damp(thigh.rotation.x,seated?-1.23:swing,10,dt);
+      shin.rotation.x=THREE.MathUtils.damp(shin.rotation.x,seated?1.24:Math.max(0,-swing)*.55,10,dt);
+      foot.rotation.x=seated?-.04:-shin.rotation.x*.42;
+    });
+  }
   // Camera-space lighting avoids blacked-out hands in darker corners.
   const rim = new THREE.PointLight(0xffe9d1, 0.6, 3, 2);
   rim.position.set(0, 0.45, -0.35);
@@ -62,9 +87,10 @@ export function createFirstPersonArms() {
     const amp = (reduced ? 0.3 : 1) * moveMix;
     hands.forEach((arm, i) => {
       const side = i === 0 ? -1 : 1;
-      arm.position.y = -0.56 + Math.sin(step * 1.9 + i * Math.PI) * 0.07 * amp
+      arm.visible=true;arm.position.z=-.88;arm.rotation.y=side*-.18;
+      arm.position.y = -0.67 + Math.sin(step * 1.9 + i * Math.PI) * 0.07 * amp
         + Math.sin(t * 1.8 + i) * 0.007;
-      arm.position.x = side * (0.57 + Math.cos(step + i * Math.PI) * 0.02 * amp);
+      arm.position.x = side * (0.48 + Math.cos(step + i * Math.PI) * 0.02 * amp);
       arm.rotation.x = -0.18 + Math.sin(step + i * Math.PI) * 0.1 * amp + focusMix * 0.08;
       arm.rotation.z = side * (0.2 + focusMix * 0.09);
     });
@@ -72,12 +98,12 @@ export function createFirstPersonArms() {
   }
   function pose(kind,point=null,motion=0){
     hands.forEach((arm,i)=>{
-      const s=i===0?-1:1;arm.visible=kind!=='coffee'||i===1;
-      const target=kind==='coffee'?new THREE.Vector3(point.x+.065,point.y+.09,point.z+.04):kind==='book'?new THREE.Vector3(s*.29,-.40,-.73):new THREE.Vector3(s*.22,-.39+((i===1)?motion*.07:0),-.61);
+      const s=i===0?-1:1;arm.visible=true;
+      const target=kind==='coffee'?(i===1?new THREE.Vector3(point.x+.09,point.y+.09,point.z+.04):new THREE.Vector3(-.43,-.70,-.78)) :kind==='book'?new THREE.Vector3(s*.29,-.40,-.73):new THREE.Vector3(s*.22,-.39+((i===1)?motion*.07:0),-.61);
       arm.rotation.set(-.24,s*-.22,s*.19);
       const grip=new THREE.Vector3(0,.30,-.26).applyEuler(arm.rotation);
       arm.position.copy(target).sub(grip);
     });
   }
-  return { root, update,pose };
+  return { root,body,update,pose,updateBody };
 }

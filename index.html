@@ -87,7 +87,7 @@
     <button type="button" id="tourExploreBtn">▶ Start Exploring</button>
     <button type="button" class="ghost-btn local-avatar-link" data-local-avatar>Private avatar settings</button>
   </section>
-  <button class="prompt" id="prompt" type="button" hidden><kbd>E</kbd><span id="promptText"></span></button>
+  <!-- No floating object name or description over the crosshair. -->
 
   <!-- touch controls -->
   <div class="joy" id="joy" aria-hidden="true"><span class="joy-knob" id="joyKnob"></span></div>
@@ -110,7 +110,7 @@
   <!-- controls help -->
   <aside class="help" id="help" aria-label="Controls" hidden>
     <p class="help-title">Explore the room</p>
-    <ul class="help-keys" id="helpKeys"></ul><label class="graphics-setting">Graphics <select id="graphicsQuality"><option value="sharp">Sharp HD</option><option value="balanced">Balanced / smoother</option></select></label><button type="button" class="ghost-btn" data-local-avatar id="avatarSettings">Choose your VRM</button><small id="avatarStatus" aria-live="polite" style="display:block;font-size:11px"></small><small id="materialInfo" style="display:block;margin-top:8px;font-size:10px;line-height:1.4;color:var(--muted)"></small>
+    <ul class="help-keys" id="helpKeys"></ul><label class="graphics-setting">Graphics <select id="graphicsQuality"><option value="sharp">Sharp HD</option><option value="balanced">Balanced / smoother</option></select></label><button type="button" class="ghost-btn" data-local-avatar id="avatarSettings">Choose your VRM</button><small id="avatarStatus" aria-live="polite" style="display:block;font-size:11px"></small><button type="button" class="ghost-btn" id="guideRetry" hidden>Retry Meera</button><small id="guideStatus" aria-live="polite"></small><button type="button" class="ghost-btn" id="voicePreview">Preview Meera voice</button><small id="voiceStatus" aria-live="polite"></small><small id="materialInfo" style="display:block;margin-top:8px;font-size:10px;line-height:1.4;color:var(--muted)"></small>
   </aside>
   <button class="help-btn" id="helpBtn" type="button" aria-label="Show controls (H)">?</button>
 
@@ -169,8 +169,8 @@
     <div class="drawer-body" id="drawerBody" tabindex="-1"></div>
   </aside>
 
-  <button type="button" id="standUp" hidden>Stand up</button>
-  <div id="catActions" hidden><button type="button" id="petHeldCat">Pet cat</button><button type="button" id="putCatDown">Put down</button></div>
+  <button type="button" id="standUp" aria-label="Stand up" hidden>↑</button>
+  <div id="catActions" hidden><button type="button" id="petHeldCat" aria-label="Pet cat">🐾</button><button type="button" id="putCatDown" aria-label="Put cat down">↓</button></div>
   <dialog id="roomBook" aria-label="Portfolio book">
     <header class="book-toolbar"><span>Reading room</span><button type="button" id="bookClose" aria-label="Close book">✕</button></header>
     <div id="bookPages" class="book-spread"></div>

@@ -635,30 +635,25 @@ export function createUI({ room = null }) {
   function hideHelpSoon() { if (!help.hidden && !helpTimer) helpTimer = setTimeout(() => { help.hidden = true; helpTimer = 0; }, 4000); }
   $('#helpBtn').addEventListener('click', () => toggleHelp());
 
-  // ---------- "Press E" prompt ----------
-  const promptEl = $('#prompt'), promptText = $('#promptText'), actBtn = $('#actBtn');
-  let promptOn = null;
-  function setPrompt(p) {
-    promptOn = p;
-    promptEl.hidden = !p;
-    actBtn.hidden = !p;
-    if (p) { const label=p.kind==='music'?(sound.lofi.playing?'Pause record':'Play record'):p.label;promptText.textContent=label;actBtn.setAttribute('aria-label',label);actBtn.textContent=p.kind==='plant'?'💧':p.kind==='music'?(sound.lofi.playing?'Ⅱ':'▶'):'✋'; }
+  // Icon-only context controls. Accessible names are not drawn on screen.
+  const actBtn=$('#actBtn');
+  let promptOn=null;
+  const actions={
+    plant:['💧','Water plant'],coffee:['☕','Drink coffee'],seat:['◉','Sit down'],
+    laptop:['▱','Open or close laptop'],cat:['🐾','Pick up cat'],
+    talk:['◌','Talk'],npc:['◌','Talk to Meera'],project:['▤','Read project book'],
+    build:['▤','Read book'],article:['▤','Read article'],cert:['▧','View certificate'],
+    window:['◐','Switch day or night'],lamp:['☼','Switch lamp'],phone:['▯','Use phone'],
+    resume:['▤','Read résumé'],lanyard:['◇','View passes'],duck:['♪','Squeak toy']
+  };
+  function setPrompt(p){
+    promptOn=p;
+    actBtn.hidden=!p||!!room?.catHeld;
+    if(!p)return;
+    const [glyph,label]=p.kind==='music'?(sound.lofi.playing?['Ⅱ','Pause record']:['▶','Play record']):(actions[p.kind]||['✋','Interact']);
+    actBtn.textContent=glyph;actBtn.setAttribute('aria-label',label);
   }
-  promptEl.querySelector('kbd').textContent = touch ? '✋' : 'E';
-  promptEl.addEventListener('click', () => room?.interact());
-  function updatePrompt() {
-    if (!promptOn || !room) return;
-    // first person: the prompt sits just under the crosshair
-    const centred = room.mode === 'follow';
-    promptEl.classList.toggle('centred', centred);
-    if (centred) { promptEl.style.transform = ''; promptEl.style.opacity = ''; return; }
-    const a = room.promptAnchor();
-    if (!a) return;
-    const p = room.toScreen(a);
-    promptEl.style.transform = `translate(${Math.round(p.x)}px, ${Math.round(p.y)}px) translate(-50%, -100%)`;
-    promptEl.style.opacity = p.visible ? '' : '0';
-  }
-
+  function updatePrompt(){}
   // ---------- Talking to Ruchir ----------
   const chat = createChat({
     room,
@@ -712,11 +707,18 @@ export function createUI({ room = null }) {
     stopGuideVoice();
     const u = new SpeechSynthesisUtterance(text.replace(/—/g, ', ').replace(/\bW, A, S, and D\b/g,'W, A, S and D'));
     const voices = window.speechSynthesis.getVoices().filter(v=>/^en/i.test(v.lang));
-    const female=/Samantha|Zira|Aria|Jenny|Victoria|Karen|Female|Neerja|Heera|Libby|Ava|Emma|Serena|Sonia|Natasha|Michelle|Moira/i;
+    const female=/Samantha|Zira|Aria|Jenny|Victoria|Karen|Female|Neerja|Heera|Libby|Ava|Emma|Serena|Sonia|Natasha|Michelle|Moira|Salli|Joanna|Ivy|Kendra|Kimberly|Raveena|Aditi|Nicky|Tessa/i;
+    const male=/\b(male|David|Mark|Daniel|Alex|Guy|Ryan|George|James|Thomas|Matthew|Brian|Ravi|Prabhat)\b/i;
     const quality=/Natural|Neural|Premium|Enhanced|Online|Google US English|Google UK English Female/i;
-    const ranked=voices.map(v=>({v,score:(female.test(v.name)?45:0)+(quality.test(v.name)?100:0)+(/en-IN/i.test(v.lang)?12:0)+(v.localService?0:5)})).sort((a,b)=>b.score-a.score);
-    u.voice=ranked[0]?.v||null;
-    u.lang=u.voice?.lang||'en-IN'; u.rate=.93; u.pitch=1.02; u.volume=.92;
+    const ranked=voices.filter(v=>female.test(v.name)&&!male.test(v.name.replace(/female/ig,''))).map(v=>({v,score:(quality.test(v.name)?100:0)+(/en-IN/i.test(v.lang)?12:0)+(v.localService?0:5)})).sort((a,b)=>b.score-a.score);
+    if(!ranked.length){
+      const status=$('#voiceStatus');if(status)status.textContent='No recognized female English voice on this device. Captions remain available.';
+      speechState.enabled=false;return; // never fall back to an unidentified male voice
+    }
+    speechState.enabled=true;
+    u.voice=ranked[0].v;
+    const status=$('#voiceStatus');if(status)status.textContent='Device voice: '+u.voice.name;
+    u.lang=u.voice?.lang||'en-IN'; u.rate=.96; u.pitch=1.08; u.volume=.92;
     currentUtterance=u;
     u.onstart=()=>{if(currentUtterance===u){speechState.active=true;speechState.word='';}};
     u.onboundary=e=>{if(currentUtterance!==u)return;const word=u.text.slice(e.charIndex).match(/^\s*([\w'-]+)/);if(word)speechState.word=word[1];};
@@ -725,6 +727,15 @@ export function createUI({ room = null }) {
     try { window.speechSynthesis.speak(u); } catch { finish(); }
   }
   if (!('speechSynthesis' in window)) tourVoice.hidden = true;
+  window.speechSynthesis?.addEventListener('voiceschanged',()=>{if(voiceEnabled&&currentNarration&&!currentUtterance)speakGuide(currentNarration);});
+  $('#voicePreview')?.addEventListener('click',()=>{
+    voiceEnabled=true;speechState.enabled=true;speakGuide('Hi! I am Meera. Come on in, and let me show you around.');
+  });
+  $('#guideRetry')?.addEventListener('click',async()=>{
+    const button=$('#guideRetry');button.disabled=true;
+    try{const guide=await room?.retryGuide();if(guide&&room&&!room.isTouring){button.hidden=true;}}
+    finally{button.disabled=false;}
+  });
   tourVoice?.addEventListener('click', () => {
     voiceEnabled = !voiceEnabled;
     speechState.enabled=voiceEnabled;
@@ -869,9 +880,7 @@ export function createUI({ room = null }) {
   // ---------- Tooltip + hint ----------
   function showTooltip(hit, ev) {
     if (!hit || !ev) { tooltip.classList.remove('show'); return; }
-    tooltip.textContent = hit.label;
-    tooltip.style.transform = `translate(${ev.clientX + 16}px, ${ev.clientY + 14}px)`;
-    tooltip.classList.add('show');
+    tooltip.classList.remove('show');
   }
   function hideHint() { hideHelpSoon(); }
 
@@ -918,14 +927,14 @@ export function createUI({ room = null }) {
     secretsBtn.setAttribute('aria-label', `Room secrets: ${found.size} of ${SECRETS.length} found`);
     secretsBtn.title = 'Room secrets';
   }
-  function markFound(id) {
+  function markFound(id,silent=false) {
     if (!SECRETS.some((s) => s.id === id) || found.has(id)) return false;
     found.add(id);
     store.set('found', [...found]);
     renderSecrets();
     secretsBtn.classList.remove('bump'); void secretsBtn.offsetWidth; secretsBtn.classList.add('bump');
     const s = SECRETS.find((x) => x.id === id);
-    toast(found.size === SECRETS.length ? `✦ All ${SECRETS.length} secrets found!` : `✦ Secret found: ${s.name} (${found.size}/${SECRETS.length})`);
+    if(!silent)toast(found.size === SECRETS.length ? `✦ All ${SECRETS.length} secrets found!` : `✦ Secret found: ${s.name} (${found.size}/${SECRETS.length})`);
     return true;
   }
   renderSecrets();
@@ -1010,15 +1019,15 @@ export function createUI({ room = null }) {
     if (room?.isTouring) return;
     if(kind==='seat'){room?.sitDown(index);return;}
     if(kind==='laptop'){room?.toggleLaptop();return;}
-    if(kind==='plant'){sound.splash();room?.act('plant');markFound(kind);return;}
-    if(kind==='music'){const on=sound.lofi.toggle();room?.act('music',on?'play':'stop');markFound(kind);if(promptOn?.kind==='music')setPrompt(promptOn);return;}
-    if(kind==='duck'){sound.squeak();room?.act('duck');markFound(kind);return;}
-    if(kind==='cat'){if(room?.catHeld){room.act('cat','pet');sound.purr(2.6);}else room?.pickupCat();markFound(kind);return;}
+    if(kind==='plant'){sound.splash();room?.act('plant');markFound(kind,true);return;}
+    if(kind==='music'){const on=sound.lofi.toggle();room?.act('music',on?'play':'stop');markFound(kind,true);if(promptOn?.kind==='music')setPrompt(promptOn);return;}
+    if(kind==='duck'){sound.squeak();room?.act('duck');markFound(kind,true);return;}
+    if(kind==='cat'){if(room?.catHeld){room.act('cat','pet');sound.purr(2.6);}else room?.pickupCat();markFound(kind,true);return;}
     if(kind==='coffee'){room?.drinkCoffee(index);return;}
     if(['project','build','article'].includes(kind)){hidePop();close();openBook(kind,index);return;}
     if (kind === 'npc') {
       const response = room?.act('npc', index);
-      if (response) showNpcLine(index, response.name + ' · ' + response.role + ': ' + response.text);
+      if (response){showNpcLine(index,response.name+': '+response.text);speakGuide(response.text);}
       return;
     }
     if (kind === 'talk') { hidePop(); close(); chat.open(); return; }
@@ -1026,12 +1035,12 @@ export function createUI({ room = null }) {
     if (kind === 'window') {
       hidePop();
       setNight(!night);
-      markFound('window') || toast(night ? '🌙 Night falls on Ahmedabad' : '☀️ Good morning, Ahmedabad');
+      markFound('window',true);
       return;
     }
     if (kind === 'lamp') {
       const on = room.act('lamp');
-      markFound('lamp') || toast(on ? '💡 Lamp on' : 'Lamp off');
+      markFound('lamp',true);
       return;
     }
     if (POP_KINDS.includes(kind)) {
@@ -1049,7 +1058,7 @@ export function createUI({ room = null }) {
     showNpcLine,
     get playing() { return playing && play.hidden; },
     blocksGameKeys: () => !!room?.isTouring || drawer.classList.contains('open') || !list.hidden || chat.isOpen || !play.hidden || bookDialog.open,
-    updateMarkers() { updateMarkers(); updatePop(); updatePrompt(); updateNpcCaption(); updateMiniMap(); updateTourProgress(); $('#standUp').hidden=!room?.isSeated;$('#catActions').hidden=!room?.catHeld; },
+    updateMarkers() { updateMarkers(); updatePop(); updatePrompt(); updateNpcCaption(); updateMiniMap(); updateTourProgress(); $('#standUp').hidden=!room?.isSeated;$('#catActions').hidden=!room?.catHeld;actBtn.hidden=!promptOn||!!room?.catHeld; },
     onHover: showTooltip,
     get isNight() { return night; },
   };

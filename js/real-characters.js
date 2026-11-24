@@ -208,6 +208,7 @@ export function createRealCharacters({ scene, onLoaded = () => {}, onError = () 
   const rigs = new Map();
   const loading = new Map();
   function load(id, position, options = {}) {
+    if(rigs.has(id))return Promise.resolve(rigs.get(id));
     if (loading.has(id)) return loading.get(id);
     if (id === 'maya' || (id === 'ruchir' && options.localAvatar)) {
       // The user-supplied 21 MB VRM is the only Mira. Do not substitute Emma,
@@ -220,7 +221,7 @@ export function createRealCharacters({ scene, onLoaded = () => {}, onError = () 
         .then(rig => {
           rigs.set(id, rig); scene.add(rig.root); onLoaded(id, rig); return rig;
         })
-        .catch(err => { onError(id, err); return null; });
+        .catch(err => { const failed=rigs.get(id);if(failed){scene.remove(failed.root);rigs.delete(id);}onError(id, err); return null; }).finally(()=>loading.delete(id));
       loading.set(id, task);
       return task;
     }
@@ -237,7 +238,7 @@ export function createRealCharacters({ scene, onLoaded = () => {}, onError = () 
         onLoaded(id, rig);
         return rig;
       })
-      .catch(err => { onError(id, err); return null; });
+      .catch(err => { const failed=rigs.get(id);if(failed){scene.remove(failed.root);rigs.delete(id);}onError(id, err); return null; }).finally(()=>loading.delete(id));
     loading.set(id, task);
     return task;
   }

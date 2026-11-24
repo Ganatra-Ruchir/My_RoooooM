@@ -26,8 +26,8 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   const lowPower = touchDevice || (navigator.deviceMemory && navigator.deviceMemory < 4);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   const nativeRatio=Math.max(1,window.devicePixelRatio||1);
-  let quality='sharp';
-  try{if(localStorage.getItem('room.graphicsQuality')==='balanced')quality='balanced';}catch{}
+  let quality=lowPower?'balanced':'sharp';
+  try{const saved=localStorage.getItem('room.graphicsQuality');if(saved==='balanced'||saved==='sharp')quality=saved;}catch{}
   // Keep sharp rendering on high-DPI displays; limit total pixels to protect GPU memory.
   const initialArea=Math.max(1,innerWidth*innerHeight);
   const sharpRatio=Math.min(nativeRatio,2.65,Math.max(1.5,Math.sqrt(3000000/initialArea)));
@@ -682,7 +682,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   scene.add(visitor.root);
   const player = { pos: visitor.root.position, yaw: -Math.PI / 2, vel: new THREE.Vector3(), target: null, stuck: 0, speed: 0 };
   const firstPersonArms = createFirstPersonArms();
-  scene.add(firstPersonArms.root);
+  scene.add(firstPersonArms.root,firstPersonArms.body);
   const npcSystem = createNPCSystem({
     scene, reducedMotion,
     onGreet: (index, line) => hooks.onNpcGreet?.(index, line),
@@ -720,6 +720,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
       }
     },
     onError(id, error) {
+      if(id==='maya')guideError=String(error?.message||error).slice(0,150);
       console.error(id === 'maya'
         ? 'Meera VRM could not be loaded; guide remains hidden (no impostor avatar).'
         : 'Realistic character could not load, using fallback:', id, error);
@@ -733,9 +734,18 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   if (!charUrl) realCharacters.load('ruchir', [STANDEE_POS.x, STANDEE_POS.z], { outfit: 'shirt', scale: 1.56, localAvatar });
   // Meera is the entire introduction. Load her model immediately and expose the
   // promise so the opening scene never shows an empty avatar or a substituted 2D still.
-  const guideReady = realCharacters.load('maya', [2.75, -2.8], {
-    outfit: 'tee', scale: 1.55, tint: '#b4c9a4',
-  });
+  let guideState='loading',guideError='';
+  function loadGuide(){
+    guideState='loading';guideError='';
+    const status=document.getElementById('guideStatus');if(status)status.textContent='Loading Meera’s original VRM…';
+    return realCharacters.load('maya',[2.75,-2.8],{outfit:'tee',scale:1.55,tint:'#b4c9a4'}).then(rig=>{
+      guideState=rig?'ready':'failed';
+      if(status)status.textContent=rig?'Meera ready':('Meera unavailable: '+guideError);
+      const retry=document.getElementById('guideRetry');if(retry)retry.hidden=!!rig;
+      return rig;
+    });
+  }
+  let guideReady=loadGuide();
   const walkRing = mesh(new THREE.RingGeometry(0.16, 0.26, 32), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false }), 0, 0.03, 0, scene, { cast: false, receive: false });
   walkRing.rotation.x = -Math.PI / 2;
   walkRing.raycast = () => {};
@@ -1000,6 +1010,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   let talking = false, movementLocked = false;
   const EYE = 2.62;
   let eyeHeight=EYE,seated=false,seatIndex=0,seatReturn=null,coffeeTime=0,coffeeHeld=null,coffeeSource=null,heldBook=null,heldBookSource=null;
+  const coffeeOrigin=new THREE.Vector3(),coffeeOriginQ=new THREE.Quaternion(),coffeeOriginS=new THREE.Vector3(),coffeeTarget=new THREE.Vector3(),coffeeTargetQ=new THREE.Quaternion(),coffeeLocal=new THREE.Vector3(),coffeeTilt=new THREE.Quaternion(),coffeeAxis=new THREE.Vector3(1,0,0);
   const cam = { yaw: 0.93, pitch: -0.06 };
   let lookSensitivity = 1.0, invertLookY = false;
   function applyMouseLook(dx, dy, touch=false) {
@@ -1257,16 +1268,25 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   const shown = (o) => { for (let p = o; p; p = p.parent) if (!p.visible) return false; return true; };
   // Character hitboxes avoid CPU skinning and per-triangle tests on VRMs.
   // Static opaque meshes still occlude interaction targets, including walls.
-  const rayCandidates=[];
+  const rayCandidates=[],visibleCandidates=[];
+  let lastRayRefresh=-Infinity;
   function castVisible(maxDistance=Infinity) {
-    rayCandidates.length=0;
-    scene.traverseVisible(o=>{
-      if(!o.isMesh || o.isSkinnedMesh || o.isInstancedMesh)return;
-      for(let a=o.parent;a;a=a.parent)if(a.userData.characterRayProxy && !o.userData.interactionProxy)return;
-      rayCandidates.push(o);
-    });
+    const now=performance.now();
+    if(now-lastRayRefresh>650){
+      lastRayRefresh=now;rayCandidates.length=0;
+      scene.traverse(o=>{
+        if(!o.isMesh||o.isSkinnedMesh||o.isInstancedMesh)return;
+        for(let a=o.parent;a;a=a.parent){
+          if(a.userData.noInteractionRay)return;
+          if(a.userData.characterRayProxy&&!o.userData.interactionProxy)return;
+        }
+        rayCandidates.push(o);
+      });
+    }
+    visibleCandidates.length=0;
+    for(const o of rayCandidates)if(o.parent&&shown(o))visibleCandidates.push(o);
     raycaster.far=maxDistance;
-    const hits=raycaster.intersectObjects(rayCandidates,false);
+    const hits=raycaster.intersectObjects(visibleCandidates,false);
     raycaster.far=Infinity;
     return hits;
   }
@@ -1403,20 +1423,29 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     coffeeSource=index===1?cupG:mugG;
     coffeeHeld=coffeeSource.clone(true);
     for(const child of [...coffeeHeld.children])if(child.userData.vapor)coffeeHeld.remove(child);
-    coffeeHeld.traverse(o=>{if(o.isMesh)o.raycast=()=>{};});
+    coffeeHeld.userData.noInteractionRay=true;coffeeHeld.traverse(o=>{if(o.isMesh)o.raycast=()=>{};});
+    coffeeSource.updateWorldMatrix(true,false);coffeeSource.matrixWorld.decompose(coffeeOrigin,coffeeOriginQ,coffeeOriginS);
+    coffeeHeld.position.copy(coffeeOrigin);coffeeHeld.quaternion.copy(coffeeOriginQ);coffeeHeld.scale.copy(coffeeOriginS);
     coffeeSource.visible=false;scene.add(coffeeHeld);coffeeTime=0;
     return true;
   }
   function updateCoffee(dt){
     if(!coffeeHeld)return;
     coffeeTime+=dt;
-    if(coffeeTime>=3.1){scene.remove(coffeeHeld);coffeeHeld=null;coffeeSource.visible=true;coffeeSource=null;return;}
-    const lift=Math.sin(Math.PI*Math.min(1,coffeeTime/3.1));
-    const local=new THREE.Vector3(.30*(1-lift*.65),-.43+lift*.33,-.72+lift*.37);
-    coffeeHeld.position.copy(local.applyQuaternion(camera.quaternion).add(camera.position));
-    coffeeHeld.quaternion.copy(camera.quaternion).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),-lift*.72));
-    coffeeHeld.scale.setScalar(1.25);
-    firstPersonArms.pose('coffee',local.set(.30*(1-lift*.65),-.43+lift*.33,-.72+lift*.37),lift);
+    if(coffeeTime>=4.4){scene.remove(coffeeHeld);coffeeHeld=null;coffeeSource.visible=true;coffeeSource=null;return;}
+    const sm=x=>{x=THREE.MathUtils.clamp(x,0,1);return x*x*(3-2*x);};
+    const sip=sm((coffeeTime-1.0)/.75)*(1-sm((coffeeTime-2.5)/.7));
+    const reach=sm(coffeeTime/.85)*(1-sm((coffeeTime-3.45)/.95));
+    coffeeLocal.set(.29-sip*.16,-.50+sip*.30,-.85+sip*.44);
+    coffeeTarget.copy(coffeeLocal).applyQuaternion(camera.quaternion).add(camera.position);
+    coffeeTilt.setFromAxisAngle(coffeeAxis,-sip*.60);
+    coffeeTargetQ.copy(camera.quaternion).multiply(coffeeTilt);
+    coffeeHeld.position.copy(coffeeOrigin).lerp(coffeeTarget,reach);
+    coffeeHeld.quaternion.copy(coffeeOriginQ).slerp(coffeeTargetQ,reach);
+    coffeeHeld.scale.copy(coffeeOriginS);
+    camera.updateMatrixWorld(true);
+    coffeeLocal.copy(coffeeHeld.position);camera.worldToLocal(coffeeLocal);
+    firstPersonArms.pose('coffee',coffeeLocal,sip);
   }
   function takeBook(kind,index){
     if(coffeeHeld||extras.catHeld||heldBook)return false;
@@ -1430,7 +1459,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
       mesh(rbox(.30,.028,.37,.008),leather,s*.15,-.015,0,leaf,{cast:false});
       mesh(rbox(.284,.045,.35,.012),paper,s*.147,.018,0,leaf,{cast:false});
     }
-    heldBook.traverse(o=>{if(o.isMesh)o.raycast=()=>{};});scene.add(heldBook);return true;
+    heldBook.userData.noInteractionRay=true;heldBook.traverse(o=>{if(o.isMesh)o.raycast=()=>{};});scene.add(heldBook);return true;
   }
   function returnBook(){
     if(heldBook)scene.remove(heldBook);heldBook=null;
@@ -1606,21 +1635,23 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   let running = false;
   let wasNear = false, greetUntil = 0;
   const visitorHead = new THREE.Vector3();
-  let simT = 0, lastFrame=0, perfElapsed=0, perfFrames=0,lastShadow=0;
+  let simT = 0, lastFrame=0, perfElapsed=0, perfFrames=0,lastShadow=0,measuredFps=0;
   function frame() {
     if (!running) return;
     requestAnimationFrame(frame);
+    if(document.hidden){lastFrame=0;return;}
     const now=performance.now(), elapsed=lastFrame?Math.min(.12,(now-lastFrame)/1000):1/60;
     lastFrame=now;
     // Adapt resolution to sustained frame rate rather than sacrifice input response.
     perfElapsed+=elapsed;perfFrames++;
-    if(quality==='balanced' && perfElapsed>2.5){
+    if(perfElapsed>2.5){
       const fps=perfFrames/perfElapsed;
-      const next=fps<26?Math.max(1,renderScale-.1):fps>49?Math.min(nativeRatio,1.4,renderScale+.05):renderScale;
+      measuredFps=Math.round(fps);
+      const next=quality==='balanced'?(fps<28?Math.max(1,renderScale-.1):fps>52?Math.min(nativeRatio,1.4,renderScale+.05):renderScale):renderScale;
       if(Math.abs(next-renderScale)>.02){renderScale=next;renderer.setPixelRatio(renderScale);renderer.setSize(W,H,false);}
       perfElapsed=0;perfFrames=0;
     }
-    if(lowPower && now-lastShadow>180){renderer.shadowMap.needsUpdate=true;lastShadow=now;}
+    if(lowPower && now-lastShadow>(measuredFps&&measuredFps<30?280:180)){renderer.shadowMap.needsUpdate=true;lastShadow=now;}
     tick(elapsed,true);
   }
   function tick(dt, draw) {
@@ -1706,12 +1737,15 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     });
     extras.update(t, dt, { camera });
     lid.rotation.x=THREE.MathUtils.damp(lid.rotation.x,laptopOpen?.28:-Math.PI/2,7,dt);
-    firstPersonArms.root.visible=mode==='follow'&&!guided.active&&!!(coffeeHeld||heldBook||extras.catHeld);
+    firstPersonArms.root.visible=mode==='follow'&&!guided.active;
+    firstPersonArms.body.visible=firstPersonArms.root.visible;
+    if(firstPersonArms.body.visible)firstPersonArms.updateBody(t,dt,player.pos,cam.yaw,cam.pitch,player.speed,seated);
     if(firstPersonArms.root.visible){
       firstPersonArms.root.position.copy(camera.position);
       firstPersonArms.root.quaternion.copy(camera.quaternion);
       if(extras.catHeld)firstPersonArms.pose('cat',null,extras.catPetting);
       else if(heldBook)updateHeldBook();
+      else if(!coffeeHeld)firstPersonArms.update(t,dt,player.speed,talking,reducedMotion);
     }
     dust.rotation.y = Math.sin(t * 0.07) * 0.008;
     updateFloaters(dt);
@@ -1770,6 +1804,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     },
     // game controls
     whenGuideReady() { return guideReady; },
+    retryGuide(){if(guideState==='loading')return guideReady;guideReady=loadGuide();return guideReady;},
     startGuidedTour: beginGuidedTour,
     skipGuidedTour(){if(guided.active)finishGuidedTour();},
     get graphicsQuality(){return quality;},
@@ -1780,7 +1815,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     get catHeld(){return extras.catHeld;},
     pickupCat(){if(coffeeHeld||heldBook)return false;return extras.act('cat','pickup');},
     putCatDown(){return extras.act('cat','putdown');},
-    get materialDiagnostics(){return {models:Object.fromEntries(propStatus),maps:Object.fromEntries(materialStatus),pixelRatio:renderer.getPixelRatio(),width:renderer.domElement.width,height:renderer.domElement.height};},
+    get materialDiagnostics(){return {models:Object.fromEntries(propStatus),maps:Object.fromEntries(materialStatus),pixelRatio:renderer.getPixelRatio(),width:renderer.domElement.width,height:renderer.domElement.height,fps:measuredFps,drawCalls:renderer.info.render.calls,triangles:renderer.info.render.triangles,guide:guideState};},
     setGraphicsQuality(next){
       quality=next==='balanced'?'balanced':'sharp';
       renderScale=quality==='sharp'?sharpRatio:Math.min(nativeRatio,1.25);

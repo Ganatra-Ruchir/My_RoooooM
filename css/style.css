@@ -974,3 +974,12 @@ body.touch .joy{touch-action:none;user-select:none;-webkit-user-select:none}
 @media(max-width:650px){#roomBook{width:96vw;padding-bottom:15vh}.book-spread{grid-template-columns:1fr 1fr;padding:7px 7px 13px}.book-page{font-size:clamp(11px,2.9vw,15px);padding:12px 10px;max-height:52dvh}.book-page h2{font-size:clamp(17px,4.7vw,25px)}.book-page h3{font-size:15px}.book-page img{max-height:120px}.book-note,.book-page figcaption{font-size:10px}#bookPreview iframe{height:220px}.book-toolbar{font-size:11px}.book-toolbar button{padding:7px 9px}}
 
 #avatarSettings{display:block;margin-top:9px;font-size:12px}#avatarStatus{color:#c8bca8;margin-top:5px;overflow-wrap:anywhere}
+
+/* Single icon action, independent of mouse/touch. No floating name labels. */
+#prompt,#tooltip,.marker .m-label{display:none!important}
+body[data-view="follow"] .act-btn:not([hidden]){display:grid;place-items:center;position:fixed;right:max(20px,env(safe-area-inset-right));bottom:max(94px,calc(env(safe-area-inset-bottom) + 80px));z-index:24;width:56px;height:56px;border:1px solid #e0c8a455;background:#27221fe8;color:#fff1d8;border-radius:50%;font-size:24px;cursor:pointer;box-shadow:0 4px 14px #0005;touch-action:manipulation}
+.act-btn[hidden],#standUp[hidden],#catActions[hidden]{display:none!important}
+#standUp{width:48px;height:48px;right:24px;bottom:160px;padding:0;font-size:25px}
+#catActions{right:20px;bottom:94px;gap:8px}#catActions button{width:52px;height:52px;padding:0;font-size:23px;border-radius:50%}
+body.at-play .act-btn,body.tour-active .act-btn,body.chatting .act-btn,body.drawer-open .act-btn,body.list-open .act-btn,body.pop-open .act-btn,body.book-open .act-btn{display:none!important}
+#guideStatus,#voiceStatus{display:block;font-size:11px;margin:5px 0;color:#c8bca8;overflow-wrap:anywhere}

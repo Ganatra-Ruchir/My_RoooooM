@@ -111,7 +111,7 @@ async function boot() {
     // cannot silently swap a 2D portrait for a different-looking 3D person.
     const guide = await Promise.race([
       room.whenGuideReady(),
-      new Promise(resolve => setTimeout(() => resolve(null), 55000)),
+      new Promise(resolve => setTimeout(() => resolve(null), 22000)),
     ]).catch(() => null);
     bar.style.width = '100%';
     room.start();
@@ -121,6 +121,7 @@ async function boot() {
     } else {
       console.warn("Meera's 3D file was unavailable; no fake substitute will be shown.");
       ui.showStart();
+      const retry=document.getElementById('guideRetry');if(retry)retry.hidden=false;
     }
     setTimeout(hideLoader, 250);
   }

@@ -126,7 +126,7 @@ export function buildExtras(ctx) {
           pose = 'pet'; st.timer -= dt;
           st.yawGoal = Math.atan2(camera.position.x - root.position.x, camera.position.z - root.position.z);
           if (t - st.lastFx > 0.32) { st.lastFx = t; spawn('heart', root.position.clone().add(new THREE.Vector3((Math.random() - 0.5) * 0.3, 0.7, 0)), { rise: 0.7, life: 1.4, size: 0.15, drift: [(Math.random() - 0.5) * 0.3, (Math.random() - 0.5) * 0.3] }); }
-          if (st.timer <= 0) st.mode = st.attend ? 'attend' : (st.onBean ? 'sleep' : 'walk');
+          if(st.timer<=0)st.mode=catHeld?'held':st.attend?'attend':(st.onBean?'sleep':'walk');
           if (st.mode === 'sleep') st.timer = 6;
           break;
       }
@@ -340,7 +340,7 @@ export function buildExtras(ctx) {
     cat.update(t, dt, camera);
     if(catHeld){
       catPetTime=Math.max(0,catPetTime-dt);
-      cat.root.position.set(0,-.56,-.78).applyQuaternion(camera.quaternion).add(camera.position);
+      cat.root.position.set(0,-.60,-.85).applyQuaternion(camera.quaternion).add(camera.position);
       cat.root.quaternion.copy(camera.quaternion).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),Math.PI*.68));
     }
 
@@ -417,7 +417,7 @@ export function buildExtras(ctx) {
     anchorOf: (kind) => anchors[kind]?.() || null,
     get catPos() { return cat.root.position; },
     get catHeld(){return catHeld;},
-    get catPetting(){return catPetTime>0?Math.sin(catPetTime*8):0;},
+    get catPetting(){return catPetTime>0?Math.sin(catPetTime*5.5)*Math.min(1,catPetTime*3):0;},
     get plantGrowth() { return growth; },
   };
 }

@@ -17,15 +17,29 @@ const ORIGINAL_SHA256 = '820d2ce6882f97eb422d4af68b3e9e34b83f21d8734ab84d0eab75c
 // Hash verification prevents accidental or partial assets from reaching the
 // loader, and the image/VRM metadata remains unmodified.
 async function originalVRMBlobURL(onProgress) {
-  let received = 0;
-  const chunks = await Promise.all(PARTS.map(async path => {
-    const response = await fetch(path, { cache: 'force-cache' });
-    if (!response.ok) throw new Error('Missing Meera VRM part ' + path + ': HTTP ' + response.status);
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    received += bytes.byteLength;
-    onProgress?.(Math.min(0.85, received / ORIGINAL_BYTES * 0.85));
-    return bytes;
-  }));
+  let received=0;
+  const chunks=new Array(PARTS.length);
+  let cursor=0;
+  async function worker(){
+    while(cursor<PARTS.length){
+      const i=cursor++;let bytes,lastError;
+      for(let attempt=0;attempt<3;attempt++){
+        const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),18000);
+        try{
+          const response=await fetch(PARTS[i],{cache:attempt?'reload':'force-cache',signal:controller.signal});
+          if(!response.ok)throw new Error('Meera part '+i+' HTTP '+response.status);
+          bytes=new Uint8Array(await response.arrayBuffer());
+          if(bytes.length<1024)throw new Error('Invalid Meera chunk');
+          break;
+        }catch(err){lastError=err;bytes=null;}
+        finally{clearTimeout(timer);}
+        if(attempt<2)await new Promise(resolve=>setTimeout(resolve,350*(attempt+1)));
+      }
+      if(!bytes)throw lastError||new Error('Meera part '+i+' unavailable');
+      chunks[i]=bytes;received+=bytes.byteLength;onProgress?.(Math.min(.85,received/ORIGINAL_BYTES*.85));
+    }
+  }
+  await Promise.all(Array.from({length:3},worker));
   if (received !== ORIGINAL_BYTES) throw new Error(
     'Meera VRM transfer incomplete: received ' + received + ' of ' + ORIGINAL_BYTES + ' bytes');
   const binary = new Uint8Array(ORIGINAL_BYTES);
