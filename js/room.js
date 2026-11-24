@@ -1011,6 +1011,8 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   let talking = false, movementLocked = false;
   const EYE = 2.62;
   let eyeHeight=EYE,seated=false,seatIndex=0,seatReturn=null,coffeeTime=0,coffeeHeld=null,coffeeSource=null,heldBook=null,heldBookSource=null;
+  const bookLocal=new THREE.Vector3(0,-.47,-.88),bookTilt=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),.38);
+  const bookGrip=new THREE.Vector3(),bookTarget=new THREE.Vector3();let bookGripScale=.82;
   let seatTransition=null,footstepDistance=0;
   const coffeeOrigin=new THREE.Vector3(),coffeeOriginQ=new THREE.Quaternion(),coffeeOriginS=new THREE.Vector3(),coffeeTarget=new THREE.Vector3(),coffeeTargetQ=new THREE.Quaternion(),coffeeLocal=new THREE.Vector3(),coffeeTilt=new THREE.Quaternion(),coffeeAxis=new THREE.Vector3(1,0,0);
   const cam = { yaw: 0.93, pitch: -0.06 };
@@ -1474,9 +1476,11 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     const leather=std(0x34251b,{map:fabricGrain,roughness:.85});
     const paper=std(0xbba27b,{map:TX.paperEdgesTexture(),roughness:.94});
     for(const s of [-1,1]){
-      const leaf=new THREE.Group();leaf.position.x=s*.025;leaf.rotation.z=s*.10;heldBook.add(leaf);
-      mesh(rbox(.30,.028,.37,.008),leather,s*.15,-.015,0,leaf,{cast:false});
-      mesh(rbox(.284,.045,.35,.012),paper,s*.147,.018,0,leaf,{cast:false});
+      const leaf=new THREE.Group();leaf.rotation.z=s*.10;heldBook.add(leaf);
+      // A single ordinary hardcover: roughly 0.43 m wide and 0.29 m tall
+      // in room units. Slim page block, no two separate thick slabs.
+      mesh(rbox(.235,.012,.31,.005),leather,s*.116,-.009,0,leaf,{cast:false});
+      mesh(rbox(.222,.022,.294,.006),paper,s*.112,.008,0,leaf,{cast:false});
     }
     heldBook.userData.noInteractionRay=true;heldBook.traverse(o=>{if(o.isMesh)o.raycast=()=>{};});scene.add(heldBook);return true;
   }
@@ -1486,9 +1490,14 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   }
   function updateHeldBook(){
     if(!heldBook)return;
-    heldBook.position.set(0,-.36,-.76).applyQuaternion(camera.quaternion).add(camera.position);
-    heldBook.quaternion.copy(camera.quaternion).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),.54));
-    firstPersonArms.pose('book');
+    // Keep the physical book below the readable page overlay, and derive
+    // grips from the same camera-space transform rather than independent guesses.
+    bookGripScale=camera.aspect<.8?.86:1;
+    bookLocal.set(0,camera.aspect<.8?-.52:-.45,-.88);
+    heldBook.position.copy(bookTarget.copy(bookLocal).applyQuaternion(camera.quaternion).add(camera.position));
+    heldBook.quaternion.copy(camera.quaternion).multiply(bookTilt);
+    heldBook.scale.setScalar(bookGripScale);
+    firstPersonArms.pose('book',bookLocal,bookGripScale);
   }
   function toggleLaptop(){
     laptopOpen=!laptopOpen;

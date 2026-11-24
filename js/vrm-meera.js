@@ -113,17 +113,43 @@ export async function loadMeeraVRM({ x, z, scale = 1.52, onProgress, localFile =
     vrm.humanoid.getNormalizedBoneNode('head');
   if(!head) throw new Error('Meera VRM has no head joint');
   // Match the room's adult head-height convention, not raw VRM authoring units.
-  if(id==='maya'){
+  {
     root.updateWorldMatrix(true,true);
     const headY=head.getWorldPosition(new THREE.Vector3()).y-root.position.y;
-    if(Number.isFinite(headY)&&headY>.5)vrm.scene.scale.multiplyScalar(THREE.MathUtils.clamp(2.64/headY,.8,1.65));
+    const targetHeight=id==='maya'?2.64:2.76;
+    if(Number.isFinite(headY)&&headY>.5)root.scale.setScalar(THREE.MathUtils.clamp(targetHeight/headY,.65,1.8));
     root.updateWorldMatrix(true,true);
+  }
+  // Preserve authored textures and spring-bone settings. Tune scene-light
+  // response only for the guide, leaving the privately licensed model intact.
+  if(id==='maya'){
+    const seen=new Set();
+    vrm.scene.traverse(o=>{
+      if(!o.isMesh)return;
+      for(const mat of Array.isArray(o.material)?o.material:[o.material]){
+        if(!mat||seen.has(mat))continue;seen.add(mat);
+        if(mat.isMeshStandardMaterial){
+          mat.envMapIntensity=.24;
+          if(/skin|face|body/i.test(mat.name||'')){mat.roughness=Math.max(.58,mat.roughness);mat.metalness=0;}
+          if(/cloth|dress|outfit|fabric/i.test(mat.name||'')){mat.roughness=Math.max(.8,mat.roughness);mat.metalness=0;}
+        }
+        // VRM MToon keeps its authored base and shade colors, avoiding a
+        // global color replacement or a destructive conversion to PBR.
+        if(mat.isMToonMaterial&&typeof mat.rimLightingMixFactor==='number'){
+          mat.rimLightingMixFactor=THREE.MathUtils.clamp(mat.rimLightingMixFactor,.18,.7);
+        }
+      }
+    });
   }
   const expressions = vrm.expressionManager;
   const keys = new Set(expressions?.expressions?.map(x => x.expressionName) || []);
   const voiceKeys = ['aa','ih','ou','ee','oh']; // VRM0 A/I/U/E/O -> normalized VRM names
   let nextBlink=2.9, blinkUntil=0, state='Idle', breath=0;
   let talkPulse=0, walkMix=0, talkMix=0, waveMix=0, gazeSmooth=0;
+  // Damped whole-body inertia from actual world motion; no exaggerated
+  // isolated anatomy animation. Authored hair/clothing springs remain active.
+  const prevWorld=new THREE.Vector3(),motionWorld=new THREE.Vector3(),motionLocal=new THREE.Vector3(),previousVelocity=new THREE.Vector3(),inverseRoot=new THREE.Quaternion();
+  let motionInitialized=false,leanX=0,leanZ=0,leanVX=0,leanVZ=0;
   let lastWordAt=-10, spokenWord='', lastVoice=false;
   const faceValues = new Map();
   const targetQ = new THREE.Quaternion(), swingQ = new THREE.Quaternion();
@@ -179,6 +205,23 @@ export async function loadMeeraVRM({ x, z, scale = 1.52, onProgress, localFile =
       const move = walkMix;
       const stride = Math.sin(now*6.1), opp = Math.sin(now*6.1 + Math.PI);
       const relax = Math.sin(breath)*0.015;
+      root.getWorldPosition(motionWorld);
+      if(motionInitialized&&dt>0){
+        motionLocal.copy(motionWorld).sub(prevWorld).multiplyScalar(1/Math.max(dt,.008));
+        if(motionLocal.length()>10){previousVelocity.set(0,0,0);leanX=leanZ=leanVX=leanVZ=0;}
+        else{
+          inverseRoot.copy(root.getWorldQuaternion(inverseRoot)).invert();motionLocal.applyQuaternion(inverseRoot);
+          const ax=clamp((motionLocal.x-previousVelocity.x)/Math.max(dt,.008),-9,9);
+          const az=clamp((motionLocal.z-previousVelocity.z)/Math.max(dt,.008),-9,9);
+          const steps=Math.max(1,Math.ceil(dt/.012)),h=dt/steps;
+          for(let k=0;k<steps;k++){
+            leanVX+=(-95*leanX-16*leanVX-az*.55)*h;leanX=clamp(leanX+leanVX*h,-.055,.055);
+            leanVZ+=(-95*leanZ-16*leanVZ+ax*.55)*h;leanZ=clamp(leanZ+leanVZ*h,-.055,.055);
+          }
+          previousVelocity.copy(motionLocal);
+        }
+      }
+      prevWorld.copy(motionWorld);motionInitialized=true;
       bend('leftUpperLeg', X_AXIS, stride*0.44*move);
       bend('rightUpperLeg', X_AXIS, opp*0.44*move);
       bend('leftLowerLeg', X_AXIS, Math.max(0,-stride)*0.36*move);
@@ -192,8 +235,10 @@ export async function loadMeeraVRM({ x, z, scale = 1.52, onProgress, localFile =
       bend('rightLowerArm', Z_AXIS, (Math.sign(bones.get('rightLowerArm')?.node.position.x||-1))*(.14+emphasis*.45+waveMix*.74));
       bend('leftHand',Y_AXIS, .09 + emphasis*.04);
       bend('rightHand',Y_AXIS, -.09 - emphasis*.08);
-      bend('chest', X_AXIS, relax);
-      bend('spine', Z_AXIS, Math.sin(now*1.12)*0.013);
+      bend('chest',X_AXIS,relax+leanX*.38);
+      bend('spine',X_AXIS,leanX*.62);
+      bend('spine',Z_AXIS,Math.sin(now*1.12)*.013+leanZ*.68);
+      bend('hips',Z_AXIS,leanZ*.22);
       bend('rightHand',Z_AXIS,waveMix*.21*Math.sin(now*6));
       if(attention) bend('head',Z_AXIS,.055);
       // Subtle head attention relative to NPC root. Avoid twists beyond VRM neck limits.
@@ -241,7 +286,10 @@ export async function loadMeeraVRM({ x, z, scale = 1.52, onProgress, localFile =
       expression('happy', .10+waveMix*.22+talkMix*.12,dt,5);
       expression('relaxed', .07+talkMix*.09,dt,5);
       expression('surprised',waveMix*.06,dt,6);
-      vrm.update(dt);
+      // Bounded substeps keep the model's native spring simulation stable
+      // during irregular mobile frame times. Humanoid and facial states persist.
+      const substeps=Math.max(1,Math.ceil(dt/(1/60)));
+      for(let i=0;i<substeps;i++)vrm.update(dt/substeps);
     },
     headWorld(out){
       root.updateWorldMatrix(true,true);

@@ -505,11 +505,11 @@ export function createUI({ room = null }) {
     const stats=item.stats?.map(([k,v])=>'<li><strong>'+esc(v)+'</strong> '+esc(k)+'</li>').join('')||'';
     const stack=item.stack?.map(x=>'<li>'+esc(x)+'</li>').join('')||'';
     const left='<span class="book-kicker">RUCHIR · SELECTED WORK</span><h2>'+title+'</h2><p class="book-hook">'+esc(item.hook||item.tag||item.category||'Project notes')+'</p><p>'+esc(item.desc||'')+'</p>';
-    const picture=image?'<figure><img src="'+esc(image)+'" alt="Project illustration or output" loading="lazy"><figcaption>Project documentation</figcaption></figure>':'<p class="book-note">No verified project image is available for this entry.</p>';
+    const picture=image?'<figure><img src="'+esc(image)+'" alt="Project illustration or output" loading="lazy"><figcaption>Project documentation</figcaption></figure>':'';
     const right=page===0?picture+(stack?'<h3>Technology</h3><ul>'+stack+'</ul>':'')+(stats?'<h3>Results</h3><ul>'+stats+'</ul>':''):
       '<h3>Explore the work</h3>'+(item.live?'<p>Try the working application directly.</p><button type="button" class="book-live" data-book-live>Load live preview</button><p class="book-note">Some websites block embedded previews. Open the original site if the frame is unavailable.</p>'+ext(item.live,'Open live site'):'<p>No live demo is listed for this entry.</p>')+(item.source?ext(item.source,'Source code'):'')+(item.url||item.writeup?ext(item.url||item.writeup,'Read the article'):'')+'<div id="bookPreview"></div>';
     bookBody.innerHTML='<article class="book-page">'+left+'</article><article class="book-page">'+right+'</article>';
-    bookBody.querySelector('img')?.addEventListener('error',e=>{e.target.closest('figure').innerHTML='<p class="book-note">Documentation image unavailable.</p>';});
+    bookBody.querySelector('img')?.addEventListener('error',e=>{e.target.closest('figure')?.remove();});
     $('#bookPageNumber').textContent=(page+1)+' / 2';bookBack.disabled=page===0;bookNext.disabled=page===1;
   }
   function openBook(kind,index){

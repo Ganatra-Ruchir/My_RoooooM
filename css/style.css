@@ -985,3 +985,14 @@ body.at-play .act-btn,body.tour-active .act-btn,body.chatting .act-btn,body.draw
 #guideStatus,#voiceStatus{display:block;font-size:11px;margin:5px 0;color:#c8bca8;overflow-wrap:anywhere}
 
 #catActions button:disabled{opacity:.4;pointer-events:none}
+
+/* Reading proportions: wide, compact spread rather than a tall modal sheet. */
+#roomBook{width:min(760px,92vw);max-height:84dvh;padding:0;margin:auto;overflow:visible}
+.book-spread{grid-template-columns:1fr 1fr;min-height:0;aspect-ratio:1.48;max-height:54dvh;box-sizing:border-box}
+.book-page,.book-page+.book-page{min-height:0;max-height:none;overflow:auto;overscroll-behavior:contain;border-radius:8px 4px 4px 8px;padding:clamp(12px,2.4vw,23px);scrollbar-width:thin;font-size:clamp(12px,1.75vw,15px);line-height:1.42}
+.book-page+.book-page{border-radius:4px 8px 8px 4px}
+.book-page h2{font-size:clamp(18px,3vw,29px);margin:8px 0;line-height:1.1}
+.book-page p{margin:8px 0}.book-page h3{margin:10px 0 4px}
+.book-toolbar{margin:4px 0;padding:4px 8px}.book-toolbar button{min-height:32px}
+body.book-open .topbar,body.book-open .dock,body.book-open .help-btn{visibility:hidden}
+@media(max-width:650px){#roomBook{width:94vw;max-height:78dvh;margin:auto}.book-spread{aspect-ratio:1.3;max-height:46dvh;padding:6px 7px 10px}.book-page,.book-page+.book-page{padding:10px;font-size:clamp(11px,3.1vw,14px);line-height:1.4}.book-page h2{font-size:clamp(16px,4.3vw,22px)}.book-kicker{font-size:8px;letter-spacing:.07em}.book-page img{max-height:95px}.book-toolbar button{font-size:12px}.book-page h3{font-size:14px}}

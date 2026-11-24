@@ -56,7 +56,9 @@ async function boot() {
   if (!hasWebGL()) return textOnly();
   await fontsReady();
 
-  const localAvatar = await Promise.race([readLocalAvatar(), new Promise(resolve=>setTimeout(()=>resolve(null),1500))]);
+  // Never silently discard an existing local avatar merely because IndexedDB
+  // is slow to open on a mobile device. readLocalAvatar handles storage errors.
+  const localAvatar = await readLocalAvatar();
   let createRoom;
   try {
     ({ createRoom } = await import('./room.js'));

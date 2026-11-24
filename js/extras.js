@@ -79,6 +79,7 @@ export function buildExtras(ctx) {
       sleep: { y: 0.15, pitch: 0, front: -1.45, back: 1.45, head: 0.3, headY: 0.05, eye: 0.08, raise: -0.04, curl: 0.42 },
     };
     const cur = { ...POSES.walk };
+    let tailFlex=0,tailVelocity=0,previousYaw=0;
     const st = { mode: 'walk', idx: 0, target: RING[1], timer: 0, yaw: 0, walk: 0, phase: 0, hop: null, attend: false, afterHop: null, lastFx: 0, onBean: false, blink: 2 };
     st.idx = 0; root.position.copy(RING[0]); st.target = RING[1]; st.idx = 1;
 
@@ -153,10 +154,17 @@ export function buildExtras(ctx) {
       if (t > st.blink) { st.blink = t + 2.5 + Math.random() * 3; st.blinkEnd = t + 0.12; }
       const eyeY = t < (st.blinkEnd || 0) ? 0.1 : cur.eye;
       eyes.forEach((e) => (e.scale.y = eyeY));
-      tail.forEach((s, i) => {
-        s.rotation.x = (i < 3 ? cur.raise : cur.raise * 0.5) + Math.sin(t * 2 - i * 0.6) * 0.05;
-        s.rotation.y = cur.curl + Math.sin(t * (pose === 'pet' ? 6 : 1.8) + i * 0.5) * (pose === 'sleep' ? 0.03 : 0.16);
+      const yawDelta=Math.atan2(Math.sin(st.yaw-previousYaw),Math.cos(st.yaw-previousYaw));
+      previousYaw=st.yaw;
+      const targetFlex=THREE.MathUtils.clamp(-yawDelta/Math.max(dt,.008)*.035,-.16,.16);
+      const steps=Math.max(1,Math.ceil(dt/.012)),h=dt/steps;
+      for(let j=0;j<steps;j++){tailVelocity+=(75*(targetFlex-tailFlex)-14*tailVelocity)*h;tailFlex+=tailVelocity*h;}
+      tail.forEach((s,i)=>{
+        const amount=(i+1)/tail.length;
+        s.rotation.x=(i<3?cur.raise:cur.raise*.5)+Math.sin(t*2-i*.6)*.035;
+        s.rotation.y=cur.curl+tailFlex*amount+Math.sin(t*(pose==='pet'?4:1.8)-i*.5)*(pose==='sleep'?.025:.08);
       });
+      if(pose==='sleep'||pose==='pet')body.position.y+=Math.sin(t*2.7)*.006;
     }
 
     return {
@@ -344,7 +352,7 @@ export function buildExtras(ctx) {
     collide?.(dropTarget);
     if(catHeld){
       catPetTime=Math.max(0,catPetTime-dt);
-      catGoal.set(0,-.60,-.85).applyQuaternion(camera.quaternion).add(camera.position);
+      catGoal.set(0,-.60+Math.sin(t*2.2)*.007,-.85).applyQuaternion(camera.quaternion).add(camera.position);
       catGoalQ.copy(camera.quaternion).multiply(catYaw);
       if(catDrop){
         catDrop.time+=dt;const x=Math.min(1,catDrop.time/.75),k=x*x*(3-2*x);

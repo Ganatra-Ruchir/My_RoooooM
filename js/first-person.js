@@ -99,8 +99,8 @@ export function createFirstPersonArms() {
   function pose(kind,point=null,motion=0){
     hands.forEach((arm,i)=>{
       const s=i===0?-1:1;arm.visible=true;
-      const target=kind==='coffee'?(i===1?new THREE.Vector3(point.x+.09,point.y+.09,point.z+.04):new THREE.Vector3(-.43,-.70,-.78)) :kind==='book'?new THREE.Vector3(s*.29,-.40,-.73):new THREE.Vector3((point?.x||0)+s*.22,THREE.MathUtils.clamp((point?.y??-.60)+.12+(i===1?motion*.09:0),-.88,-.18),THREE.MathUtils.clamp((point?.z??-.85)+.18,-1.25,-.35));
-      arm.rotation.set(-.24,s*-.22,s*.19);
+      const target=kind==='coffee'?(i===1?new THREE.Vector3(point.x+.09,point.y+.09,point.z+.04):new THREE.Vector3(-.43,-.70,-.78)) :kind==='book'?new THREE.Vector3(s*.213*(motion||1),(point?.y??-.47)-.035,(point?.z??-.88)+.105):new THREE.Vector3((point?.x||0)+s*.22,THREE.MathUtils.clamp((point?.y??-.60)+.12+(i===1?motion*.09:0),-.88,-.18),THREE.MathUtils.clamp((point?.z??-.85)+.18,-1.25,-.35));
+      arm.rotation.set(kind==='book'?-.38:-.24,s*-.22,s*(kind==='book'?.34:.19));
       const grip=new THREE.Vector3(0,.30,-.26).applyEuler(arm.rotation);
       arm.position.copy(target).sub(grip);
     });
