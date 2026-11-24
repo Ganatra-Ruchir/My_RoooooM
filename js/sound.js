@@ -13,7 +13,7 @@ function audio() {
     const d = noiseBuf.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
   }
-  if (ctx.state === 'suspended') ctx.resume();
+  if (ctx.state === 'suspended') ctx.resume().catch(()=>{});
   return ctx;
 }
 function noise(dest, t, dur) {
@@ -166,3 +166,21 @@ export const lofi = {
   stop: stopLofi,
   get playing() { return !!loop; },
 };
+
+/* Quiet procedural sound cues. Recorded Foley can replace these later. */
+export function unlock(){audio();}
+function filteredNoise(freq,peak,duration,type='bandpass'){
+  if(!ctx||ctx.state!=='running')return;
+  const t=ctx.currentTime,b=ctx.createBiquadFilter(),g=ctx.createGain();
+  b.type=type;b.frequency.value=freq;b.Q.value=.8;
+  env(g,t,peak,.009,duration);noise(b,t,duration+.03);b.connect(g).connect(master);
+}
+export function footstep(){filteredNoise(420+Math.random()*140,.12,.13,'lowpass');}
+export function pageTurn(){if(audio())filteredNoise(1900,.12,.24);}
+export function sip(){filteredNoise(760,.055,.22);}
+export function ceramicTap(){if(!ctx||ctx.state!=='running')return;const t=ctx.currentTime,o=ctx.createOscillator(),g=ctx.createGain();o.type='sine';o.frequency.value=910;env(g,t,.038,.004,.12);o.connect(g).connect(master);o.start(t);o.stop(t+.15);}
+export function meow(){
+  if(!audio())return;const t=ctx.currentTime,o=ctx.createOscillator(),g=ctx.createGain(),b=ctx.createBiquadFilter();
+  o.type='triangle';o.frequency.setValueAtTime(540,t);o.frequency.linearRampToValueAtTime(720,t+.14);o.frequency.exponentialRampToValueAtTime(350,t+.46);
+  b.type='bandpass';b.frequency.value=940;b.Q.value=1.3;env(g,t,.11,.06,.46);o.connect(b).connect(g).connect(master);o.start(t);o.stop(t+.55);
+}

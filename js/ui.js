@@ -515,6 +515,7 @@ export function createUI({ room = null }) {
   function openBook(kind,index){
     const item=({project:projects,build:workbench,article:articles})[kind]?.[index];if(!item||!room)return;
     if(!room.takeBook(kind,index))return;
+    sound.pageTurn();
     bookFocus=document.activeElement;bookState={item,page:0};renderBook();
     room.lockMovement(true);bookDialog.showModal();body.classList.add('book-open');releaseMouse();
   }
@@ -526,8 +527,8 @@ export function createUI({ room = null }) {
     room?.returnBook();room?.clearSelection();room?.lockMovement(false);bookFocus?.focus?.({preventScroll:true});
   });
   $('#bookClose').addEventListener('click',closeBook);
-  bookBack.addEventListener('click',()=>{if(bookState){bookState.page=0;renderBook();}});
-  bookNext.addEventListener('click',()=>{if(bookState){bookState.page=1;renderBook();}});
+  bookBack.addEventListener('click',()=>{if(bookState){sound.pageTurn();bookState.page=0;renderBook();}});
+  bookNext.addEventListener('click',()=>{if(bookState){sound.pageTurn();bookState.page=1;renderBook();}});
   bookBody.addEventListener('click',e=>{
     if(!e.target.closest('[data-book-live]')||!bookState?.item.live)return;
     const host=$('#bookPreview');if(!host||host.querySelector('iframe'))return;
@@ -535,7 +536,7 @@ export function createUI({ room = null }) {
     frame.sandbox='allow-scripts allow-forms allow-popups';frame.referrerPolicy='no-referrer';frame.loading='lazy';host.append(frame);
   });
   $('#standUp').addEventListener('click',()=>room?.standUp());
-  $('#petHeldCat').addEventListener('click',()=>{if(room?.catHeld){room.act('cat','pet');sound.purr(2.6);}});
+  $('#petHeldCat').addEventListener('click',()=>{if(room?.catReady&&room.act('cat','pet'))sound.purr(2.6);});
   $('#putCatDown').addEventListener('click',()=>room?.putCatDown());
   let playing = false;          // has the visitor clicked "play" yet?
   const panelOpen = () => drawer.classList.contains('open') || !list.hidden || chat.isOpen || !!popKind || bookDialog.open;
@@ -626,7 +627,7 @@ export function createUI({ room = null }) {
   function showMaterialInfo(){
     if(!qualityInfo||!room)return;
     const d=room.materialDiagnostics,models=Object.values(d.models),maps=Object.values(d.maps);
-    qualityInfo.textContent='Render '+d.width+' × '+d.height+' px · Models '+models.filter(x=>x==='ready').length+'/'+models.length+' · Texture maps '+maps.filter(x=>x==='ready').length+'/'+maps.length+' loaded'+(models.includes('fallback')||maps.includes('fallback')?' · Some assets using fallback':'');
+    qualityInfo.textContent='Render '+d.width+' × '+d.height+' px · '+(d.fps||'—')+' FPS · '+d.drawCalls+' draw calls · Models '+models.filter(x=>x==='ready').length+'/'+models.length+' · Texture maps '+maps.filter(x=>x==='ready').length+'/'+maps.length+' loaded'+(models.includes('fallback')||maps.includes('fallback')?' · Some assets using fallback':'');
   }
   $('#helpBtn').addEventListener('click',showMaterialInfo);
   qualitySelect?.addEventListener('change',showMaterialInfo);
@@ -637,6 +638,7 @@ export function createUI({ room = null }) {
 
   // Icon-only context controls. Accessible names are not drawn on screen.
   const actBtn=$('#actBtn');
+  document.addEventListener('pointerdown',sound.unlock,{once:true,passive:true});
   let promptOn=null;
   const actions={
     plant:['💧','Water plant'],coffee:['☕','Drink coffee'],seat:['◉','Sit down'],
@@ -1022,7 +1024,7 @@ export function createUI({ room = null }) {
     if(kind==='plant'){sound.splash();room?.act('plant');markFound(kind,true);return;}
     if(kind==='music'){const on=sound.lofi.toggle();room?.act('music',on?'play':'stop');markFound(kind,true);if(promptOn?.kind==='music')setPrompt(promptOn);return;}
     if(kind==='duck'){sound.squeak();room?.act('duck');markFound(kind,true);return;}
-    if(kind==='cat'){if(room?.catHeld){room.act('cat','pet');sound.purr(2.6);}else room?.pickupCat();markFound(kind,true);return;}
+    if(kind==='cat'){if(room?.catHeld){if(room.act('cat','pet'))sound.purr(2.6);}else if(room?.pickupCat())sound.meow();markFound(kind,true);return;}
     if(kind==='coffee'){room?.drinkCoffee(index);return;}
     if(['project','build','article'].includes(kind)){hidePop();close();openBook(kind,index);return;}
     if (kind === 'npc') {
@@ -1058,7 +1060,7 @@ export function createUI({ room = null }) {
     showNpcLine,
     get playing() { return playing && play.hidden; },
     blocksGameKeys: () => !!room?.isTouring || drawer.classList.contains('open') || !list.hidden || chat.isOpen || !play.hidden || bookDialog.open,
-    updateMarkers() { updateMarkers(); updatePop(); updatePrompt(); updateNpcCaption(); updateMiniMap(); updateTourProgress(); $('#standUp').hidden=!room?.isSeated;$('#catActions').hidden=!room?.catHeld;actBtn.hidden=!promptOn||!!room?.catHeld; },
+    updateMarkers() { updateMarkers(); updatePop(); updatePrompt(); updateNpcCaption(); updateMiniMap(); updateTourProgress(); $('#standUp').hidden=!room?.isSeated;$('#catActions').hidden=!room?.catHeld;$('#petHeldCat').disabled=!room?.catReady;$('#putCatDown').disabled=!room?.catReady;actBtn.hidden=!promptOn||!!room?.catHeld; },
     onHover: showTooltip,
     get isNight() { return night; },
   };

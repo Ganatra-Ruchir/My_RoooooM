@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import * as TX from './textures.js';
+import * as sound from './sound.js';
 import { createAvatar } from './avatar.js';
 import { buildExtras } from './extras.js';
 import { createVisitor, collide, addObstacle } from './player.js';
@@ -823,7 +824,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   }
 
   // ---------- Extras: cat, record player, phone, résumé, lanyards, duck, plant ----------
-  const extras = buildExtras({ scene, mesh, std, box, rbox, rod, register, spawn, deskTop, profile: data.profile });
+  const extras = buildExtras({ scene, mesh, std, box, rbox, rod, register, spawn, deskTop, profile: data.profile, collide });
 
   // Contact shadows give furniture weight without another expensive light.
   const contactMat=new THREE.MeshBasicMaterial({map:TX.contactShadowTexture(),transparent:true,depthWrite:false,opacity:.65,polygonOffset:true,polygonOffsetFactor:-1,toneMapped:false});
@@ -1010,6 +1011,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   let talking = false, movementLocked = false;
   const EYE = 2.62;
   let eyeHeight=EYE,seated=false,seatIndex=0,seatReturn=null,coffeeTime=0,coffeeHeld=null,coffeeSource=null,heldBook=null,heldBookSource=null;
+  let seatTransition=null,footstepDistance=0;
   const coffeeOrigin=new THREE.Vector3(),coffeeOriginQ=new THREE.Quaternion(),coffeeOriginS=new THREE.Vector3(),coffeeTarget=new THREE.Vector3(),coffeeTargetQ=new THREE.Quaternion(),coffeeLocal=new THREE.Vector3(),coffeeTilt=new THREE.Quaternion(),coffeeAxis=new THREE.Vector3(1,0,0);
   const cam = { yaw: 0.93, pitch: -0.06 };
   let lookSensitivity = 1.0, invertLookY = false;
@@ -1406,17 +1408,18 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   const before = new THREE.Vector3(), tryPos = new THREE.Vector3();
   function canWalk() { return !talking && !movementLocked && mode !== 'focus'; }
   function sitDown(index=0){
-    if(seated||!canWalk()||guided.active)return false;
+    if(seated||seatTransition||!canWalk()||guided.active)return false;
     seatReturn=player.pos.clone();seated=true;seatIndex=index;player.target=null;player.vel.set(0,0,0);
-    player.pos.copy((index===1?avatar.chair:chair).getWorldPosition(new THREE.Vector3())).setY(0);
+    const destination=(index===1?avatar.chair:chair).getWorldPosition(new THREE.Vector3()).setY(0);
+    seatTransition={from:player.pos.clone(),to:destination,time:0};
     const target=index===1?lap.getWorldPosition(new THREE.Vector3()):new THREE.Vector3(.7,.54,1);
-    cam.yaw=Math.atan2(player.pos.x-target.x,player.pos.z-target.z);cam.pitch=index===1?-.28:-.15;lookGoal=null;
+    lookGoal={yaw:Math.atan2(destination.x-target.x,destination.z-target.z),pitch:index===1?-.28:-.15};
     return true;
   }
   function standUp(){
-    if(!seated)return false;
-    seated=false;if(seatReturn)player.pos.copy(seatReturn);
-    collide(player.pos);player.vel.set(0,0,0);return true;
+    if(!seated||seatTransition||coffeeHeld||heldBook)return false;
+    seated=false;const to=seatReturn?seatReturn.clone():player.pos.clone();collide(to);
+    seatTransition={from:player.pos.clone(),to,time:0};player.vel.set(0,0,0);return true;
   }
   function drinkCoffee(index){
     if(coffeeHeld||heldBook||extras.catHeld||guided.active)return false;
@@ -1431,8 +1434,9 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   }
   function updateCoffee(dt){
     if(!coffeeHeld)return;
-    coffeeTime+=dt;
-    if(coffeeTime>=4.4){scene.remove(coffeeHeld);coffeeHeld=null;coffeeSource.visible=true;coffeeSource=null;return;}
+    const beforeSip=coffeeTime;coffeeTime+=dt;
+    if(beforeSip<1.8&&coffeeTime>=1.8)sound.sip();
+    if(coffeeTime>=4.4){sound.ceramicTap();scene.remove(coffeeHeld);coffeeHeld=null;coffeeSource.visible=true;coffeeSource=null;return;}
     const sm=x=>{x=THREE.MathUtils.clamp(x,0,1);return x*x*(3-2*x);};
     const sip=sm((coffeeTime-1.0)/.75)*(1-sm((coffeeTime-2.5)/.7));
     const reach=sm(coffeeTime/.85)*(1-sm((coffeeTime-3.45)/.95));
@@ -1445,6 +1449,10 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     coffeeHeld.scale.copy(coffeeOriginS);
     camera.updateMatrixWorld(true);
     coffeeLocal.copy(coffeeHeld.position);camera.worldToLocal(coffeeLocal);
+    // Keep the arm in anatomical reach while the cup travels across the desk.
+    coffeeLocal.x=THREE.MathUtils.clamp(coffeeLocal.x,-.55,.55);
+    coffeeLocal.y=THREE.MathUtils.clamp(coffeeLocal.y,-.86,-.12);
+    coffeeLocal.z=THREE.MathUtils.clamp(coffeeLocal.z,-1.25,-.30);
     firstPersonArms.pose('coffee',coffeeLocal,sip);
   }
   function takeBook(kind,index){
@@ -1478,8 +1486,15 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   }
   function viewYaw() { return mode === 'follow' ? cam.yaw : Math.atan2(camera.position.x - controls.target.x, camera.position.z - controls.target.z); }
   function updatePlayer(t, dt) {
+    if(seatTransition){
+      seatTransition.time+=dt;
+      const x=Math.min(1,seatTransition.time/.55),k=x*x*(3-2*x);
+      player.pos.lerpVectors(seatTransition.from,seatTransition.to,k);player.speed=0;player.vel.set(0,0,0);
+      if(x>=1)seatTransition=null;
+      return;
+    }
     if(seated){
-      if(canWalk()&&(Math.abs(input.x)>.25||Math.abs(input.y)>.25))standUp();
+      if(canWalk()&&(Math.abs(input.x)>.25||Math.abs(input.y)>.25)&&standUp())return;
       else{player.speed=0;player.vel.set(0,0,0);return;}
     }
     let mx = 0, mz = 0;
@@ -1527,6 +1542,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
       visitor.root.rotation.y = player.yaw;
     }
     player.speed = speed;
+    if(!guided.active&&mode==='follow'&&speed>.25){footstepDistance+=before.distanceTo(player.pos);if(footstepDistance>.65){footstepDistance=0;sound.footstep();}}
     if(visitor.root.visible)visitor.update(t, dt, speed / 2.6);
     walkRing.material.opacity = THREE.MathUtils.damp(walkRing.material.opacity, player.target ? 0.85 : 0, 10, dt);
     if (player.target) { walkRing.position.set(player.target.x, 0.03, player.target.z); walkRing.scale.setScalar(1 + Math.sin(t * 6) * 0.12); }
@@ -1572,6 +1588,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     if(!canWalk()||mode!=='follow'||fp.blend<1)return null;
     camera.updateMatrixWorld(true);
     raycaster.setFromCamera(CENTER,camera);
+    if(coffeeHeld||heldBook||seatTransition||extras.catHeld)return null;
     const h=castVisible(4.5)[0];
     if(!h)return null;
     let root=h.object;
@@ -1735,7 +1752,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
       sp.material.rotation=Math.sin(t*.55+sp.userData.phase*7)*.45;
       sp.scale.set(.062+k*.10,.125+k*.16,1);
     });
-    extras.update(t, dt, { camera });
+    extras.update(t, dt, { camera,playerPos:player.pos,yaw:cam.yaw });
     lid.rotation.x=THREE.MathUtils.damp(lid.rotation.x,laptopOpen?.28:-Math.PI/2,7,dt);
     firstPersonArms.root.visible=mode==='follow'&&!guided.active;
     firstPersonArms.body.visible=firstPersonArms.root.visible;
@@ -1743,7 +1760,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     if(firstPersonArms.root.visible){
       firstPersonArms.root.position.copy(camera.position);
       firstPersonArms.root.quaternion.copy(camera.quaternion);
-      if(extras.catHeld)firstPersonArms.pose('cat',null,extras.catPetting);
+      if(extras.catHeld)firstPersonArms.pose('cat',extras.catGrip,extras.catPetting);
       else if(heldBook)updateHeldBook();
       else if(!coffeeHeld)firstPersonArms.update(t,dt,player.speed,talking,reducedMotion);
     }
@@ -1813,6 +1830,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     sitDown,
     drinkCoffee,takeBook,returnBook,toggleLaptop,
     get catHeld(){return extras.catHeld;},
+    get catReady(){return extras.catReady;},
     pickupCat(){if(coffeeHeld||heldBook)return false;return extras.act('cat','pickup');},
     putCatDown(){return extras.act('cat','putdown');},
     get materialDiagnostics(){return {models:Object.fromEntries(propStatus),maps:Object.fromEntries(materialStatus),pixelRatio:renderer.getPixelRatio(),width:renderer.domElement.width,height:renderer.domElement.height,fps:measuredFps,drawCalls:renderer.info.render.calls,triangles:renderer.info.render.triangles,guide:guideState};},

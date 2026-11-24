@@ -983,3 +983,5 @@ body[data-view="follow"] .act-btn:not([hidden]){display:grid;place-items:center;
 #catActions{right:20px;bottom:94px;gap:8px}#catActions button{width:52px;height:52px;padding:0;font-size:23px;border-radius:50%}
 body.at-play .act-btn,body.tour-active .act-btn,body.chatting .act-btn,body.drawer-open .act-btn,body.list-open .act-btn,body.pop-open .act-btn,body.book-open .act-btn{display:none!important}
 #guideStatus,#voiceStatus{display:block;font-size:11px;margin:5px 0;color:#c8bca8;overflow-wrap:anywhere}
+
+#catActions button:disabled{opacity:.4;pointer-events:none}

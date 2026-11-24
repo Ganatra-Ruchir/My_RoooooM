@@ -11,7 +11,7 @@ const BEAN_EDGE = 4;
 const BEAN_TOP = new THREE.Vector3(2.85, 0.8, 2.55);
 
 export function buildExtras(ctx) {
-  const { scene, mesh, std, box, rbox, rod, register, spawn, deskTop, profile } = ctx;
+  const { scene, mesh, std, box, rbox, rod, register, spawn, deskTop, profile,collide } = ctx;
   const anchors = {};
   const tmp = new THREE.Vector3();
   // Invisible, slightly larger click areas so small things are easy to hit.
@@ -174,7 +174,9 @@ export function buildExtras(ctx) {
   hitBox(cat.root, 0.42, 0.62, 0.85, 0, 0.3, 0);
   register(cat.root, { kind: 'cat', index: 0, label: 'Pick up Commit the cat' }, { dir: new THREE.Vector3(0, 0, 0), selectOffset: 0, hoverOffset: 0 });
   anchors.cat = () => cat.root.position.clone().add(new THREE.Vector3(0, 0.85, 0));
-  let catHeld=false,catPetTime=0,catReturn=null;
+  let catHeld=false,catPetTime=0,catReturn=null,catLift=0,catDrop=null;
+  const catStart=new THREE.Vector3(),catStartQ=new THREE.Quaternion(),catGoal=new THREE.Vector3(),catGoalQ=new THREE.Quaternion(),catGrip=new THREE.Vector3(),catYaw=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),Math.PI*.68);
+  const dropTarget=new THREE.Vector3();
 
   // =====================================================================
   // Record player on a cabinet by the certificate wall
@@ -336,12 +338,25 @@ export function buildExtras(ctx) {
   // =====================================================================
   // Update + actions
   // =====================================================================
-  function update(t, dt, { camera }) {
-    cat.update(t, dt, camera);
+  function update(t,dt,{camera,playerPos,yaw}){
+    cat.update(t,dt,camera);
+    dropTarget.set(-Math.sin(yaw)*1.0,0,-Math.cos(yaw)*1.0).add(playerPos).setY(0);
+    collide?.(dropTarget);
     if(catHeld){
       catPetTime=Math.max(0,catPetTime-dt);
-      cat.root.position.set(0,-.60,-.85).applyQuaternion(camera.quaternion).add(camera.position);
-      cat.root.quaternion.copy(camera.quaternion).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),Math.PI*.68));
+      catGoal.set(0,-.60,-.85).applyQuaternion(camera.quaternion).add(camera.position);
+      catGoalQ.copy(camera.quaternion).multiply(catYaw);
+      if(catDrop){
+        catDrop.time+=dt;const x=Math.min(1,catDrop.time/.75),k=x*x*(3-2*x);
+        cat.root.position.lerpVectors(catDrop.from,catDrop.to,k);
+        cat.root.quaternion.slerpQuaternions(catDrop.q,catDrop.endQ,k);
+        if(x>=1){catHeld=false;cat.drop(catDrop.to);catDrop=null;cat.root.userData.hit.label='Pick up Commit the cat';}
+      }else{
+        catLift=Math.min(1,catLift+dt/.70);const k=catLift*catLift*(3-2*catLift);
+        cat.root.position.lerpVectors(catStart,catGoal,k);
+        cat.root.quaternion.slerpQuaternions(catStartQ,catGoalQ,k);
+      }
+      catGrip.copy(cat.root.position);camera.worldToLocal(catGrip);
     }
 
     // record player
@@ -381,9 +396,10 @@ export function buildExtras(ctx) {
   function act(kind, action) {
     switch (kind) {
       case 'cat':
-        if(action==='pickup'&&!catHeld){catReturn=cat.root.position.clone();catHeld=true;cat.hold();cat.root.userData.hit.label='Pet Commit';return true;}
-        if(action==='putdown'&&catHeld){catHeld=false;cat.drop(catReturn);cat.root.userData.hit.label='Pick up Commit the cat';return true;}
-        if(action==='pet'&&catHeld){catPetTime=2.6;cat.pet();return true;}
+        if(action==='pickup'&&!catHeld){catReturn=cat.root.position.clone();catStart.copy(cat.root.position);catStartQ.copy(cat.root.quaternion);catHeld=true;catLift=0;cat.hold();cat.root.userData.hit.label='Pet Commit';return true;}
+        if(action==='putdown'&&catHeld&&!catDrop&&catLift>=1){catPetTime=0;cat.hold();catDrop={from:cat.root.position.clone(),to:dropTarget.clone(),q:cat.root.quaternion.clone(),endQ:new THREE.Quaternion(),time:0};return true;}
+        if(action==='pet'&&catHeld&&!catDrop&&catLift>=1&&catPetTime<=0){catPetTime=2.6;cat.pet();return true;}
+        if(catHeld)return false;
         if (action === 'attend') cat.attend(true);
         if (action === 'release') cat.attend(false);
         if (action === 'pet') cat.pet();
@@ -417,6 +433,8 @@ export function buildExtras(ctx) {
     anchorOf: (kind) => anchors[kind]?.() || null,
     get catPos() { return cat.root.position; },
     get catHeld(){return catHeld;},
+    get catReady(){return catHeld&&catLift>=1&&!catDrop;},
+    get catGrip(){return catGrip;},
     get catPetting(){return catPetTime>0?Math.sin(catPetTime*5.5)*Math.min(1,catPetTime*3):0;},
     get plantGrowth() { return growth; },
   };
