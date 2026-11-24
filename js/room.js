@@ -7,7 +7,7 @@ import * as TX from './textures.js';
 import * as sound from './sound.js';
 import { createAvatar } from './avatar.js';
 import { buildExtras } from './extras.js';
-import { createVisitor, collide, addObstacle } from './player.js';
+import { createVisitor, collide, addObstacle, moveWithCollision, findFloorPath } from './player.js';
 import { createNPCSystem } from './npc.js';
 import { createFirstPersonArms } from './first-person.js';
 import { createRealCharacters } from './real-characters.js';
@@ -824,7 +824,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   }
 
   // ---------- Extras: cat, record player, phone, résumé, lanyards, duck, plant ----------
-  const extras = buildExtras({ scene, mesh, std, box, rbox, rod, register, spawn, deskTop, profile: data.profile, collide });
+  const extras = buildExtras({scene,mesh,std,box,rbox,rod,register,spawn,deskTop,profile:data.profile,collide,moveWithCollision,findFloorPath});
 
   // Contact shadows give furniture weight without another expensive light.
   const contactMat=new THREE.MeshBasicMaterial({map:TX.contactShadowTexture(),transparent:true,depthWrite:false,opacity:.65,polygonOffset:true,polygonOffsetFactor:-1,toneMapped:false});
@@ -1227,7 +1227,8 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     cam.pitch = THREE.MathUtils.clamp(cam.pitch, -1.27, 1.15);
     fp.bob += dt * player.speed * 2.6;
     const bobY = Math.sin(fp.bob * 2) * (lowPower?.008:.022) * Math.min(1, player.speed / 2.6);
-    eyeHeight=THREE.MathUtils.damp(eyeHeight,seated?(seatIndex===1?2.12:1.52):EYE,6,dt);
+    // Seated eye level = cushion height + seated torso/head height.
+    eyeHeight=THREE.MathUtils.damp(eyeHeight,seated?(seatIndex===1?2.12:1.81):EYE,6,dt);
     fpPos.set(player.pos.x, eyeHeight + bobY, player.pos.z);
     fpEuler.set(cam.pitch, cam.yaw, 0);
     fpQuat.setFromEuler(fpEuler);
@@ -1421,9 +1422,10 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   const before = new THREE.Vector3(), tryPos = new THREE.Vector3();
   function canWalk() { return !talking && !movementLocked && mode !== 'focus'; }
   function sitDown(index=0){
-    if(seated||seatTransition||!canWalk()||guided.active)return false;
+    if(seated||seatTransition||!canWalk()||guided.active||coffeeHeld||heldBook||extras.catHeld)return false;
     seatReturn=player.pos.clone();seated=true;seatIndex=index;player.target=null;player.vel.set(0,0,0);
-    const destination=(index===1?avatar.chair:chair).getWorldPosition(new THREE.Vector3()).setY(0);
+    const seat=index===1?avatar.chair:chair;
+    const destination=seat.localToWorld(new THREE.Vector3(0,0,index===1?.10:.12)).setY(0);
     seatTransition={from:player.pos.clone(),to:destination,time:0};
     const target=index===1?lap.getWorldPosition(new THREE.Vector3()):new THREE.Vector3(.7,.54,1);
     lookGoal={yaw:Math.atan2(destination.x-target.x,destination.z-target.z),pitch:index===1?-.28:-.15};
@@ -1538,19 +1540,13 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     player.vel.z = THREE.MathUtils.damp(player.vel.z, mz * maxSpeed, 18, dt);
     before.copy(player.pos);
     const sx = player.vel.x * dt, sz = player.vel.z * dt, want = Math.hypot(sx, sz);
-    player.pos.x += sx; player.pos.z += sz;
-    collide(player.pos);
-    // walking straight into something round: try sliding around it to the left or right
-    if (want > 1e-4 && before.distanceTo(player.pos) < want * 0.35) {
-      let bestX = player.pos.x, bestZ = player.pos.z, bestD = before.distanceTo(player.pos);
-      for (const a of [0.8, -0.8, 1.3, -1.3]) {
-        const c = Math.cos(a), s = Math.sin(a);
-        tryPos.set(before.x + sx * c - sz * s, 0, before.z + sx * s + sz * c);
-        collide(tryPos);
-        const d = before.distanceTo(tryPos);
-        if (d > bestD + 1e-4) { bestD = d; bestX = tryPos.x; bestZ = tryPos.z; }
-      }
-      player.pos.x = bestX; player.pos.z = bestZ;
+    if(want>0)moveWithCollision(player.pos,sx,sz);
+    // Keep the intended input direction: no artificial sideways jump when
+    // the player runs into a desk or a wall. The contact normal provides slide.
+    if(dt>0){
+      const actualX=(player.pos.x-before.x)/dt,actualZ=(player.pos.z-before.z)/dt;
+      if(Math.abs(actualX)<Math.abs(player.vel.x)*.2)player.vel.x=actualX;
+      if(Math.abs(actualZ)<Math.abs(player.vel.z)*.2)player.vel.z=actualZ;
     }
     const speed = before.distanceTo(player.pos) / Math.max(dt, 1e-4);
     if (player.target) { player.stuck = speed < 0.3 ? player.stuck + dt : 0; if (player.stuck > 0.5) player.target = null; }
@@ -1688,7 +1684,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
       if(Math.abs(next-renderScale)>.02){renderScale=next;renderer.setPixelRatio(renderScale);renderer.setSize(W,H,false);}
       perfElapsed=0;perfFrames=0;
     }
-    if(lowPower && now-lastShadow>(measuredFps&&measuredFps<30?280:180)){renderer.shadowMap.needsUpdate=true;lastShadow=now;}
+    if(lowPower && now-lastShadow>(measuredFps&&measuredFps<30?350:180)){renderer.shadowMap.needsUpdate=true;lastShadow=now;}
     tick(elapsed,true);
   }
   function tick(dt, draw) {
@@ -1776,7 +1772,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     lid.rotation.x=THREE.MathUtils.damp(lid.rotation.x,laptopOpen?.28:-Math.PI/2,7,dt);
     firstPersonArms.root.visible=mode==='follow'&&!guided.active;
     firstPersonArms.body.visible=firstPersonArms.root.visible;
-    if(firstPersonArms.body.visible)firstPersonArms.updateBody(t,dt,player.pos,cam.yaw,cam.pitch,player.speed,seated);
+    if(firstPersonArms.body.visible)firstPersonArms.updateBody(t,dt,player.pos,cam.yaw,cam.pitch,player.speed,seated,seatIndex===1?.97:.66);
     if(firstPersonArms.root.visible){
       firstPersonArms.root.position.copy(camera.position);
       firstPersonArms.root.quaternion.copy(camera.quaternion);

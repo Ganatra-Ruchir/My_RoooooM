@@ -599,3 +599,28 @@ export function wickerTexture(){
   }
   x.putImageData(a,0,0);return wickerMap=toTexture(c,{repeat:[3,3]});
 }
+
+let catFurMap,catWhiteMap,catIrisMap;
+export function catFurTexture(white=false){
+  if(white?catWhiteMap:catFurMap)return white?catWhiteMap:catFurMap;
+  const [c,x]=canvas(512,512),r=rng(7133),a=x.createImageData(512,512);
+  for(let y=0;y<512;y++)for(let i=0;i<512;i++){
+    const q=(y*512+i)*4,grain=Math.sin(i*.71+Math.sin(y*.055)*3.5)*9;
+    const stripe=Math.sin(i*.075+Math.sin(y*.018)*1.9);
+    const v=white?205+grain+r()*25:79+grain+r()*26+(stripe>.55?-28:15);
+    a.data[q]=v*1.04;a.data[q+1]=v;a.data[q+2]=v*.96;a.data[q+3]=255;
+  }
+  x.putImageData(a,0,0);
+  for(let k=0;k<14000;k++){
+    const px=r()*512,py=r()*512,len=3+r()*10;
+    x.strokeStyle=white?'rgba(255,248,236,.21)':r()>.5?'rgba(192,181,169,.24)':'rgba(29,25,23,.30)';
+    x.lineWidth=.4+r()*.45;x.beginPath();x.moveTo(px,py);x.quadraticCurveTo(px+1,py+len*.5,px+Math.sin(py*.03)*2,py+len);x.stroke();
+  }
+  const tex=toTexture(c,{aniso:4});if(white)catWhiteMap=tex;else catFurMap=tex;return tex;
+}
+export function catIrisTexture(){
+  if(catIrisMap)return catIrisMap;
+  const [c,x]=canvas(128,128),r=rng(173);x.fillStyle='#b4b877';x.fillRect(0,0,128,128);
+  for(let i=0;i<190;i++){const a=r()*Math.PI*2;x.strokeStyle=r()>.5?'#69764180':'#e5d99a80';x.lineWidth=.5+r();x.beginPath();x.moveTo(64+Math.cos(a)*9,64+Math.sin(a)*9);x.lineTo(64+Math.cos(a)*63,64+Math.sin(a)*63);x.stroke();}
+  return catIrisMap=toTexture(c);
+}

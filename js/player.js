@@ -4,47 +4,68 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 
 export const PLAYER_RADIUS = 0.34;
 
-// Things the visitor can't walk through (floor plan, x/z). Boxes are [x0, x1, z0, z1]; circles [x, z, r].
-const BOXES = [
-  [-2.3, 0.7, -3.4, -0.95],   // desk + chair + Ruchir
-  [1.25, 4.75, -5, -4.22],    // bookshelf
-  [-5, -4.25, 1.55, 3.15],    // record player cabinet
-  [-5, -4.2, 0.9, 1.75],      // record sleeves
+// Floor-plan geometry in room units. A rotated rectangle matches each
+// piece of furniture, rather than blocking its entire surrounding aisle.
+const BOXES=[
+  [-.8,-1.65,2.9,1.3,0], // desktop footprint
+  [-.8,-2.75,.96,.96,0], // desk chair
+  [3,-4.62,3.52,.82,0], // bookshelf
+  [-4.63,2.35,.72,1.56,0], // record cabinet
+  [2.7,2.4,1.38,1.38,-.65], // armchair, including imported model footprint
+  [.7,1,1.02,.86,.25], // coffee table
 ];
-const CIRCLES = [
-  [-4.25, -4.25, 0.5],        // corner plant
-  [0.7, 1.0, 0.66],           // coffee table
-  [2.7, 2.4, 0.78],           // beanbag
-  [4.45, 1.25, 0.28],         // helmet (by the door)
-];
-const BOUNDS = 4.62;
-
-export function addObstacle(o) { (o.length === 3 ? CIRCLES : BOXES).push(o); }
-
-// Move a point, sliding along furniture and walls.
-export function collide(p) {
-  const r = PLAYER_RADIUS;
-  for (let iter = 0; iter < 2; iter++) {
-    for (const [x0, x1, z0, z1] of BOXES) {
-      const cx = Math.max(x0, Math.min(p.x, x1)), cz = Math.max(z0, Math.min(p.z, z1));
-      const dx = p.x - cx, dz = p.z - cz, d2 = dx * dx + dz * dz;
-      if (d2 < r * r) {
-        if (d2 > 1e-8) { const d = Math.sqrt(d2); p.x = cx + (dx / d) * r; p.z = cz + (dz / d) * r; }
-        else {
-          // inside the box: push out the shortest way
-          const opts = [[p.x - x0 + r, -1, 0], [x1 - p.x + r, 1, 0], [p.z - z0 + r, 0, -1], [z1 - p.z + r, 0, 1]].sort((a, b) => a[0] - b[0]);
-          p.x += opts[0][1] * opts[0][0]; p.z += opts[0][2] * opts[0][0];
-        }
-      }
+const CIRCLES=[[-4.25,-4.25,.58],[4.45,1.25,.29]];
+const BOUNDS=4.96;
+export function addObstacle(o){
+  if(o.length===3){if(!CIRCLES.some(x=>x.every((v,i)=>v===o[i])))CIRCLES.push(o);}
+  else if(o.length===5)BOXES.push(o);
+  else if(o.length===4){const [x0,x1,z0,z1]=o;BOXES.push([(x0+x1)/2,(z0+z1)/2,x1-x0,z1-z0,0]);}
+}
+export function collide(p,r=PLAYER_RADIUS){
+  const bound=BOUNDS-r;
+  for(let iter=0;iter<5;iter++){
+    for(const [x,z,w,d,yaw] of BOXES){
+      const c=Math.cos(yaw),s=Math.sin(yaw),dx=p.x-x,dz=p.z-z;
+      let lx=c*dx-s*dz,lz=s*dx+c*dz;
+      const hx=w/2,hz=d/2,cx=Math.max(-hx,Math.min(hx,lx)),cz=Math.max(-hz,Math.min(hz,lz));
+      const ox=lx-cx,oz=lz-cz,len=Math.hypot(ox,oz);
+      if(len>=r)continue;
+      if(len>1e-7){lx=cx+ox/len*r;lz=cz+oz/len*r;}
+      else if(hx-Math.abs(lx)<hz-Math.abs(lz)){lx=(lx>=0?1:-1)*(hx+r);}
+      else{lz=(lz>=0?1:-1)*(hz+r);}
+      p.x=x+c*lx+s*lz;p.z=z-s*lx+c*lz;
     }
-    for (const [cx, cz, cr] of CIRCLES) {
-      const dx = p.x - cx, dz = p.z - cz, d = Math.hypot(dx, dz), min = cr + r;
-      if (d < min) { const k = d > 1e-6 ? min / d : 1; p.x = cx + dx * k; p.z = cz + (d > 1e-6 ? dz * k : min); }
+    for(const [x,z,cr] of CIRCLES){
+      const dx=p.x-x,dz=p.z-z,d=Math.hypot(dx,dz),min=cr+r;
+      if(d<min){p.x=x+(d>1e-7?dx/d*min:0);p.z=z+(d>1e-7?dz/d*min:min);}
     }
-    p.x = Math.max(-BOUNDS, Math.min(BOUNDS, p.x));
-    p.z = Math.max(-BOUNDS, Math.min(BOUNDS, p.z));
+    p.x=Math.max(-bound,Math.min(bound,p.x));p.z=Math.max(-bound,Math.min(bound,p.z));
   }
   return p;
+}
+// Small swept steps prevent tunnelling even when a device drops frames.
+export function moveWithCollision(p,dx,dz,r=PLAYER_RADIUS){
+  const n=Math.max(1,Math.ceil(Math.hypot(dx,dz)/.075));
+  for(let i=0;i<n;i++){p.x+=dx/n;p.z+=dz/n;collide(p,r);}
+  return p;
+}
+// A deterministic grid search for the cat, recomputed only when its target changes.
+export function findFloorPath(from,to,r=.20){
+  const step=.25,min=-4.5,N=37,idx=(x,z)=>z*N+x,point=i=>({x:min+(i%N)*step,z:min+Math.floor(i/N)*step});
+  const cells=new Uint8Array(N*N),previous=new Int32Array(N*N);previous.fill(-1);
+  function clear(i){if(cells[i])return cells[i]===1;const p=point(i),q={...p};collide(q,r);const ok=Math.hypot(p.x-q.x,p.z-q.z)<.015;cells[i]=ok?1:2;return ok;}
+  function closest(p){let best=-1,d=Infinity;for(let i=0;i<N*N;i++){const q=point(i),a=Math.hypot(p.x-q.x,p.z-q.z);if(a<d&&clear(i)){best=i;d=a;}}return best;}
+  const a=closest(from),b=closest(to);if(a<0||b<0)return [];
+  const queue=[a];previous[a]=a;
+  for(let h=0;h<queue.length;h++){
+    const i=queue[h];if(i===b)break;const x=i%N,z=Math.floor(i/N);
+    for(const [dx,dz] of [[1,0],[-1,0],[0,1],[0,-1]]){
+      const xx=x+dx,zz=z+dz;if(xx<0||xx>=N||zz<0||zz>=N)continue;
+      const j=idx(xx,zz);if(previous[j]!==-1||!clear(j))continue;previous[j]=i;queue.push(j);
+    }
+  }
+  if(previous[b]===-1)return [];
+  const path=[];for(let i=b;i!==a;i=previous[i])path.push(point(i));path.reverse();return path;
 }
 
 export function createVisitor() {

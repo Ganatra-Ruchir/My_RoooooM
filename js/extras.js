@@ -7,11 +7,11 @@ import {loadPhotographicProp} from './photographic-props.js';
 // The cat's patrol loop around the open floor (checked to avoid furniture).
 const RING = [[-3.6, -1.2], [-3.7, 2.6], [-1.2, 3.9], [2.0, 4.1], [3.6, 3.3], [3.85, 2.6], [3.85, -0.3], [3.0, -2.9], [1.6, -0.4], [-1.5, -0.4]]
   .map(([x, z]) => new THREE.Vector3(x, 0, z));
-const BEAN_EDGE = 4;
-const BEAN_TOP = new THREE.Vector3(2.85, 0.8, 2.55);
+// The old beanbag no longer exists. Keep the cat's naps on the floor.
+const NAP_POINT = 4;
 
 export function buildExtras(ctx) {
-  const { scene, mesh, std, box, rbox, rod, register, spawn, deskTop, profile,collide } = ctx;
+  const {scene,mesh,std,box,rbox,rod,register,spawn,deskTop,profile,collide,moveWithCollision,findFloorPath}=ctx;
   const anchors = {};
   const tmp = new THREE.Vector3();
   // Invisible, slightly larger click areas so small things are easy to hit.
@@ -25,40 +25,50 @@ export function buildExtras(ctx) {
     const root = new THREE.Group();
     root.scale.setScalar(1.15);
     scene.add(root);
-    const fur = std(0x4b4c56, { roughness: 0.95 });
-    const furDark = std(0x34353d, { roughness: 0.95 });
-    const white = std(0xf4f0e8, { roughness: 0.9 });
-    const pink = std(0xe8a0aa, { roughness: 0.6 });
-    const eyeMat = new THREE.MeshStandardMaterial({ color: 0xa6d86a, emissive: 0x4b7a1e, emissiveIntensity: 0.35, roughness: 0.2 });
+    const furMap=TX.catFurTexture(),whiteMap=TX.catFurTexture(true);
+    const fur=new THREE.MeshPhysicalMaterial({color:0xb6b2ac,map:furMap,bumpMap:furMap,bumpScale:.007,roughness:.9,sheen:.42,sheenColor:new THREE.Color(0x827c72),sheenRoughness:.86,envMapIntensity:.16});
+    const furDark=std(0x393734,{map:furMap,bumpMap:furMap,bumpScale:.006,roughness:.93});
+    const white=std(0xd4cbbd,{map:whiteMap,bumpMap:whiteMap,bumpScale:.005,roughness:.9});
+    const pink=std(0x986966,{roughness:.74});
+    const eyeMat=new THREE.MeshPhysicalMaterial({color:0x9ba85b,map:TX.catIrisTexture(),roughness:.24,clearcoat:.7,clearcoatRoughness:.13,envMapIntensity:.5});
     const pupilMat = std(0x101010, { roughness: 0.2 });
 
     const body = new THREE.Group(); body.position.set(0, 0.3, 0); root.add(body);
-    mesh(new THREE.CapsuleGeometry(0.14, 0.34, 6, 14), fur, 0, 0, 0, body).rotation.x = Math.PI / 2;
-    mesh(new THREE.SphereGeometry(0.11, 14, 10), white, 0, -0.03, 0.19, body).scale.set(0.95, 1, 0.7);
-    for (let i = 0; i < 3; i++) mesh(new THREE.TorusGeometry(0.143, 0.014, 6, 20, Math.PI), furDark, 0, 0, -0.12 + i * 0.1, body, { cast: false });
+    // Rounded rib cage and haunches, not detached rings around a capsule.
+    mesh(new THREE.SphereGeometry(1,36,24),fur,0,0,-.025,body).scale.set(.147,.158,.32);
+    mesh(new THREE.SphereGeometry(1,28,20),fur,0,.024,-.203,body).scale.set(.151,.16,.142);
+    mesh(new THREE.SphereGeometry(1,28,20),white,0,-.037,.195,body).scale.set(.102,.115,.105);
 
     const head = new THREE.Group(); head.position.set(0, 0.12, 0.3); body.add(head);
-    mesh(new THREE.SphereGeometry(0.13, 18, 14), fur, 0, 0, 0, head).scale.set(1.08, 0.95, 1);
-    mesh(new THREE.SphereGeometry(0.065, 12, 10), white, 0, -0.045, 0.092, head).scale.set(1.3, 0.8, 0.8);
-    mesh(new THREE.SphereGeometry(0.018, 8, 6), pink, 0, -0.012, 0.135, head);
-    const eyes = [];
+    mesh(new THREE.SphereGeometry(.13,36,24),fur,0,0,0,head).scale.set(1.08,.95,1);
+    for(const side of [-1,1])mesh(new THREE.SphereGeometry(.047,22,16),white,side*.035,-.042,.102,head).scale.set(1,.78,.91);
+    mesh(new THREE.SphereGeometry(.019,18,12),pink,0,-.015,.145,head).scale.set(1,.66,.65);
+    const eyes=[],ears=[];
+    function earGeometry(){
+      const shape=new THREE.Shape();shape.moveTo(-.047,0);shape.quadraticCurveTo(-.042,.06,-.012,.109);shape.quadraticCurveTo(.01,.127,.025,.094);shape.quadraticCurveTo(.041,.043,.047,0);shape.closePath();
+      const g=new THREE.ExtrudeGeometry(shape,{depth:.012,bevelEnabled:true,bevelThickness:.006,bevelSize:.006,bevelSegments:2,steps:1,curveSegments:8});g.computeVertexNormals();return g;
+    }
+    const earGeo=earGeometry();
     for (const s of [-1, 1]) {
-      mesh(new THREE.ConeGeometry(0.055, 0.11, 4), fur, s * 0.075, 0.11, -0.01, head).rotation.set(0, Math.PI / 4, s * -0.35);
-      mesh(new THREE.ConeGeometry(0.032, 0.07, 4), pink, s * 0.073, 0.1, 0.014, head).rotation.set(0, Math.PI / 4, s * -0.35);
+      const ear=new THREE.Group();ear.position.set(s*.082,.082,-.022);ear.rotation.z=-s*.24;head.add(ear);
+      mesh(earGeo,fur,0,0,0,ear);
+      mesh(earGeo,pink,0,.008,.015,ear,{cast:false}).scale.set(.65,.72,.23);
+      ears.push(ear);
       const eye = new THREE.Group(); eye.position.set(s * 0.052, 0.022, 0.104); head.add(eye);
-      mesh(new THREE.SphereGeometry(0.027, 10, 8), eyeMat, 0, 0, 0, eye, { cast: false });
-      mesh(new THREE.BoxGeometry(0.008, 0.034, 0.006), pupilMat, 0, 0, 0.026, eye, { cast: false });
+      mesh(new THREE.SphereGeometry(.029,24,18),eyeMat,0,0,0,eye,{cast:false}).scale.set(1,.94,.78);
+      mesh(new THREE.SphereGeometry(.019,16,12),pupilMat,0,0,.022,eye,{cast:false}).scale.set(.28,1.02,.30);
       eyes.push(eye);
       for (let k = 0; k < 3; k++) {
-        const w = mesh(new THREE.BoxGeometry(0.15, 0.004, 0.004), white, s * 0.1, -0.035 + (k - 1) * 0.013, 0.105, head, { cast: false });
-        w.rotation.set(0, s * -0.25, s * (k - 1) * 0.15);
+        const base=new THREE.Vector3(s*.067,-.035+(k-1)*.013,.121);
+        const curve=new THREE.QuadraticBezierCurve3(base,new THREE.Vector3(s*.14,base.y+.009,.15),new THREE.Vector3(s*.20,base.y+(k-1)*.018,.12));
+        mesh(new THREE.TubeGeometry(curve,8,.0015,4,false),white,0,0,0,head,{cast:false});
       }
     }
     const legs = [];
     for (const [x, z] of [[-0.075, 0.17], [0.075, 0.17], [-0.075, -0.17], [0.075, -0.17]]) {
       const pivot = new THREE.Group(); pivot.position.set(x, -0.06, z); body.add(pivot);
-      mesh(new THREE.CylinderGeometry(0.035, 0.03, 0.22, 8), fur, 0, -0.11, 0, pivot);
-      mesh(new THREE.SphereGeometry(0.038, 10, 8), white, 0, -0.225, 0.012, pivot).scale.set(1, 0.7, 1.25);
+      mesh(new THREE.CapsuleGeometry(.035,.145,7,16),fur,0,-.105,0,pivot).scale.set(1.05,1,1.18);
+      mesh(new THREE.SphereGeometry(.040,20,14),white,0,-.218,.014,pivot).scale.set(1,.64,1.22);
       legs.push(pivot);
     }
     const tail = [];
@@ -67,7 +77,7 @@ export function buildExtras(ctx) {
       const seg = new THREE.Group();
       if (i > 0) seg.position.set(0, 0, -0.06);
       parent.add(seg);
-      mesh(new THREE.SphereGeometry(0.034 - i * 0.0018, 8, 6), i === 7 ? white : fur, 0, 0, -0.03, seg).scale.set(1, 1, 1.7);
+      mesh(new THREE.SphereGeometry(.035-i*.002,18,12),fur,0,0,-.03,seg).scale.set(1,1,1.92);
       tail.push(seg);
       parent = seg;
     }
@@ -76,35 +86,42 @@ export function buildExtras(ctx) {
       walk: { y: 0.3, pitch: 0, front: 0, back: 0, head: 0.05, headY: 0.12, eye: 1, raise: 0.22, curl: 0 },
       sit: { y: 0.27, pitch: -0.55, front: 0.55, back: -0.75, head: 0.45, headY: 0.12, eye: 1, raise: -0.12, curl: 0.32 },
       pet: { y: 0.27, pitch: -0.55, front: 0.55, back: -0.75, head: 0.3, headY: 0.13, eye: 0.15, raise: 0.5, curl: 0.05 },
-      sleep: { y: 0.15, pitch: 0, front: -1.45, back: 1.45, head: 0.3, headY: 0.05, eye: 0.08, raise: -0.04, curl: 0.42 },
+      sleep: {y:.15,pitch:0,front:-1.45,back:1.45,head:.3,headY:.05,eye:.08,raise:-.04,curl:.42},
+      held: {y:.20,pitch:.08,front:-.72,back:.8,head:.04,headY:.10,eye:.72,raise:-.2,curl:.18},
+      heldPet: {y:.20,pitch:.08,front:-.72,back:.8,head:-.09,headY:.12,eye:.13,raise:-.12,curl:.24},
     };
     const cur = { ...POSES.walk };
     let tailFlex=0,tailVelocity=0,previousYaw=0;
     const st = { mode: 'walk', idx: 0, target: RING[1], timer: 0, yaw: 0, walk: 0, phase: 0, hop: null, attend: false, afterHop: null, lastFx: 0, onBean: false, blink: 2 };
     st.idx = 0; root.position.copy(RING[0]); st.target = RING[1]; st.idx = 1;
 
-    function nextTarget() { st.idx = (st.idx + 1) % RING.length; st.target = RING[st.idx]; }
+    let route=[],routeIndex=0,routeGoal=null;
+    function nextTarget(){st.idx=(st.idx+1)%RING.length;st.target=RING[st.idx];routeGoal=null;}
+    function planRoute(){route=findFloorPath?.(root.position,st.target,.20)||[];routeIndex=0;routeGoal=st.target;}
     function startHop(to, then) { st.hop = { from: root.position.clone(), to: to.clone(), k: 0 }; st.mode = 'hop'; st.afterHop = then; }
     function arrive() {
-      if (st.idx === BEAN_EDGE && Math.random() < 0.65) return startHop(BEAN_TOP, () => { st.onBean = true; st.mode = 'sleep'; st.timer = 10 + Math.random() * 8; });
+      if(st.idx===NAP_POINT&&Math.random()<.65){st.onBean=false;st.mode='sleep';st.timer=8+Math.random()*6;return;}
       if (Math.random() < 0.3) { st.mode = 'sit'; st.timer = 2.5 + Math.random() * 4; return; }
       nextTarget();
     }
     function leaveBean() {
-      startHop(RING[BEAN_EDGE], () => { st.onBean = false; st.mode = 'walk'; nextTarget(); });
+      st.onBean=false;st.mode='walk';root.position.y=0;nextTarget();
     }
 
     function update(t, dt, camera) {
       let pose = 'walk', moving = false;
       switch (st.mode) {
         case 'walk': {
-          tmp.subVectors(st.target, root.position); tmp.y = 0;
-          const d = tmp.length();
-          if (d < 0.05) { arrive(); break; }
-          const stepLen = Math.min(d, 0.5 * dt);
-          root.position.addScaledVector(tmp.normalize(), stepLen);
-          st.yawGoal = Math.atan2(tmp.x, tmp.z);
-          moving = true;
+          if(routeGoal!==st.target)planRoute();
+          if(routeIndex>=route.length){arrive();break;}
+          const waypoint=route[routeIndex];tmp.set(waypoint.x-root.position.x,0,waypoint.z-root.position.z);
+          const d=tmp.length();if(d<.045){routeIndex++;break;}
+          const stepLen=Math.min(d,.54*dt);tmp.normalize();
+          const oldX=root.position.x,oldZ=root.position.z;
+          moveWithCollision(root.position,tmp.x*stepLen,tmp.z*stepLen,.20);
+          st.yawGoal=Math.atan2(tmp.x,tmp.z);
+          moving=Math.hypot(root.position.x-oldX,root.position.z-oldZ)>.0002;
+          if(!moving&&dt>0){nextTarget();}
           break;
         }
         case 'sit': pose = 'sit'; st.timer -= dt; if (st.timer <= 0) { st.mode = 'walk'; nextTarget(); } break;
@@ -121,10 +138,10 @@ export function buildExtras(ctx) {
           if (h.k >= 1) { st.hop = null; const then = st.afterHop; st.afterHop = null; then(); if (st.attend && st.mode !== 'pet') st.mode = 'attend'; }
           break;
         }
-        case 'held': pose='sleep';break;
+        case 'held': pose='held';break;
         case 'attend': pose = 'sit'; st.yawGoal = Math.atan2(camera.position.x - root.position.x, camera.position.z - root.position.z); break;
         case 'pet':
-          pose = 'pet'; st.timer -= dt;
+          pose=catHeld?'heldPet':'pet';st.timer-=dt;
           st.yawGoal = Math.atan2(camera.position.x - root.position.x, camera.position.z - root.position.z);
           if (t - st.lastFx > 0.32) { st.lastFx = t; spawn('heart', root.position.clone().add(new THREE.Vector3((Math.random() - 0.5) * 0.3, 0.7, 0)), { rise: 0.7, life: 1.4, size: 0.15, drift: [(Math.random() - 0.5) * 0.3, (Math.random() - 0.5) * 0.3] }); }
           if(st.timer<=0)st.mode=catHeld?'held':st.attend?'attend':(st.onBean?'sleep':'walk');
@@ -148,8 +165,10 @@ export function buildExtras(ctx) {
       body.rotation.x = cur.pitch;
       legs[0].rotation.x = cur.front + sw; legs[1].rotation.x = cur.front - sw;
       legs[2].rotation.x = cur.back - sw; legs[3].rotation.x = cur.back + sw;
-      head.rotation.x = cur.head + (pose === 'pet' ? Math.sin(t * 5) * 0.08 : 0);
-      head.rotation.z = pose === 'pet' ? Math.sin(t * 3) * 0.2 : 0;
+      const beingPetted=pose==='pet'||pose==='heldPet';
+      head.rotation.x=cur.head+(beingPetted?Math.sin(t*3)*.045:0);
+      head.rotation.z=THREE.MathUtils.damp(head.rotation.z,beingPetted?.09*Math.sin(t*2):0,7,dt);
+      ears.forEach((ear,i)=>{ear.rotation.z=(i===0?1:-1)*.24+(beingPetted?.065*Math.sin(t*5+i):.018*Math.sin(t*1.8+i));});
       head.position.y = cur.headY;
       if (t > st.blink) { st.blink = t + 2.5 + Math.random() * 3; st.blinkEnd = t + 0.12; }
       const eyeY = t < (st.blinkEnd || 0) ? 0.1 : cur.eye;
@@ -164,7 +183,7 @@ export function buildExtras(ctx) {
         s.rotation.x=(i<3?cur.raise:cur.raise*.5)+Math.sin(t*2-i*.6)*.035;
         s.rotation.y=cur.curl+tailFlex*amount+Math.sin(t*(pose==='pet'?4:1.8)-i*.5)*(pose==='sleep'?.025:.08);
       });
-      if(pose==='sleep'||pose==='pet')body.position.y+=Math.sin(t*2.7)*.006;
+      if(pose==='sleep'||beingPetted||pose==='held')body.position.y+=Math.sin(t*2.7)*.004;
     }
 
     return {
@@ -349,7 +368,7 @@ export function buildExtras(ctx) {
   function update(t,dt,{camera,playerPos,yaw}){
     cat.update(t,dt,camera);
     dropTarget.set(-Math.sin(yaw)*1.0,0,-Math.cos(yaw)*1.0).add(playerPos).setY(0);
-    collide?.(dropTarget);
+    collide?.(dropTarget,.23);
     if(catHeld){
       catPetTime=Math.max(0,catPetTime-dt);
       catGoal.set(0,-.60+Math.sin(t*2.2)*.007,-.85).applyQuaternion(camera.quaternion).add(camera.position);

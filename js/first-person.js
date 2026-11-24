@@ -63,14 +63,16 @@ export function createFirstPersonArms() {
     add(foot,new THREE.BoxGeometry(.21,.042,.39),sole,0,-.036,-.065);
     legs.push({thigh,shin,foot});
   }
-  function updateBody(t,dt,pos,yaw,pitch,speed,seated){
+  function updateBody(t,dt,pos,yaw,pitch,speed,seated,seatHeight=.97){
     body.visible=pitch<-.24;body.position.copy(pos);body.rotation.y=yaw;
     const stride=THREE.MathUtils.clamp(speed/2,0,1);
     legs.forEach(({thigh,shin,foot},i)=>{
       const swing=Math.sin(t*6.5+i*Math.PI)*stride*.28;
-      thigh.position.y=seated?.96:1.34;
-      thigh.rotation.x=THREE.MathUtils.damp(thigh.rotation.x,seated?-1.23:swing,10,dt);
-      shin.rotation.x=THREE.MathUtils.damp(shin.rotation.x,seated?1.24:Math.max(0,-swing)*.55,10,dt);
+      thigh.position.y=seated?seatHeight+.10:1.34;
+      // Keep knees forward and lower legs pointing toward the floor.
+      const seatedHip=seatHeight<.8?-1.48:-1.24;
+      thigh.rotation.x=THREE.MathUtils.damp(thigh.rotation.x,seated?seatedHip:swing,10,dt);
+      shin.rotation.x=THREE.MathUtils.damp(shin.rotation.x,seated?-seatedHip:Math.max(0,-swing)*.55,10,dt);
       foot.rotation.x=seated?-.04:-shin.rotation.x*.42;
     });
   }
