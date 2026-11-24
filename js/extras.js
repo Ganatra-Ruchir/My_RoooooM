@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import * as TX from './textures.js';
 import {advanceSpring,advanceDrop} from './prop-physics.js';
 import {loadPhotographicProp} from './photographic-props.js';
+import {loadLocalCat} from './local-cat.js';
 
 // The cat's patrol loop around the open floor (checked to avoid furniture).
 const RING = [[-3.6, -1.2], [-3.7, 2.6], [-1.2, 3.9], [2.0, 4.1], [3.6, 3.3], [3.85, 2.6], [3.85, -0.3], [3.0, -2.9], [1.6, -0.4], [-1.5, -0.4]]
@@ -12,7 +13,7 @@ const RING = [[-3.6, -1.2], [-3.7, 2.6], [-1.2, 3.9], [2.0, 4.1], [3.6, 3.3], [3
 const NAP_POINT = 4;
 
 export function buildExtras(ctx) {
-  const {scene,mesh,std,box,rbox,rod,register,spawn,deskTop,profile,collide,moveWithCollision,findFloorPath}=ctx;
+  const {scene,mesh,std,box,rbox,rod,register,spawn,deskTop,profile,collide,moveWithCollision,findFloorPath,localCat}=ctx;
   const anchors = {};
   const tmp = new THREE.Vector3();
   // Invisible, slightly larger click areas so small things are easy to hit.
@@ -108,7 +109,7 @@ export function buildExtras(ctx) {
       held: {y:.20,pitch:.08,front:-.72,back:.8,head:.04,headY:.10,eye:.72,raise:-.2,curl:.18},
       heldPet: {y:.20,pitch:.08,front:-.72,back:.8,head:-.09,headY:.12,eye:.13,raise:-.12,curl:.24},
     };
-    const cur = { ...POSES.walk };
+    const cur = { ...POSES.walk };let custom=null;
     let tailFlex=0,tailVelocity=0,previousYaw=0;
     const st = { mode: 'walk', idx: 0, target: RING[1], timer: 0, yaw: 0, walk: 0, phase: 0, hop: null, attend: false, afterHop: null, lastFx: 0, onBean: false, blink: 2 };
     st.idx = 0; root.position.copy(RING[0]); st.target = RING[1]; st.idx = 1;
@@ -201,10 +202,12 @@ export function buildExtras(ctx) {
         s.rotation.y=cur.curl+tailFlex*amount+Math.sin(t*(pose==='pet'?4:1.8)-i*.5)*(pose==='sleep'?.025:.08);
       });
       if(pose==='sleep'||beingPetted||pose==='held')body.position.y+=Math.sin(t*2.7)*.004;
+      if(custom)custom.update(t,st.phase,st.walk,pose,tailFlex);
     }
 
     return {
       root, update,
+      setCustom(rig){custom=rig;body.visible=false;root.add(rig.root);},
       attend(on) {
         st.attend = on;
         if (on) { if (st.mode !== 'hop') st.mode = 'attend'; }
@@ -215,9 +218,13 @@ export function buildExtras(ctx) {
       drop(position){root.position.copy(position).setY(0);st.attend=false;st.onBean=false;st.mode='walk';nextTarget();},
     };
   })();
-  hitBox(cat.root, 0.42, 0.62, 0.85, 0, 0.3, 0);
+  const catHit=hitBox(cat.root, .42,.62,.85,0,.3,0);catHit.userData.interactionProxy=true;
   register(cat.root, { kind: 'cat', index: 0, label: 'Pick up Commit the cat' }, { dir: new THREE.Vector3(0, 0, 0), selectOffset: 0, hoverOffset: 0 });
   anchors.cat = () => cat.root.position.clone().add(new THREE.Vector3(0, 0.85, 0));
+  if(localCat)loadLocalCat(localCat).then(rig=>{
+    cat.setCustom(rig);catHit.geometry.dispose();catHit.geometry=new THREE.BoxGeometry(Math.max(.42,rig.width),Math.max(.45,rig.height),Math.max(.70,rig.depth));catHit.position.y=Math.max(.45,rig.height)/2;
+    const status=document.getElementById('catStatus');if(status)status.textContent='Custom cat active: '+localCat.name+' (private noncommercial preview)';
+  }).catch(err=>{const status=document.getElementById('catStatus');if(status)status.textContent='Cat VRM failed: '+String(err?.message||err).slice(0,170);console.warn('Private cat load failed',err);});
   let catHeld=false,catPetTime=0,catReturn=null,catLift=0,catDrop=null;
   const catStart=new THREE.Vector3(),catStartQ=new THREE.Quaternion(),catGoal=new THREE.Vector3(),catGoalQ=new THREE.Quaternion(),catGrip=new THREE.Vector3(),catYaw=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),Math.PI*.68);
   const dropTarget=new THREE.Vector3();

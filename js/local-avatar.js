@@ -1,39 +1,48 @@
-// Keep licensed VRM bytes on the visitor's device. No upload or public hosting.
-const DB='ruchir-local-avatar-v1', STORE='avatar', KEY='ruchir';
+// Licensed files stay in this browser's IndexedDB. Never uploaded or redistributed.
+const DB='ruchir-local-avatar-v1',STORE='avatar';
 function database(){return new Promise((resolve,reject)=>{
   if(!globalThis.indexedDB)return reject(new Error('Local storage unavailable'));
-  const request=indexedDB.open(DB,1);
-  request.onupgradeneeded=()=>request.result.createObjectStore(STORE);
-  request.onsuccess=()=>resolve(request.result); request.onerror=()=>reject(request.error);
+  const req=indexedDB.open(DB,1);
+  req.onupgradeneeded=()=>req.result.createObjectStore(STORE);
+  req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);req.onblocked=()=>reject(new Error('Close other portfolio tabs and retry.'));
 });}
-export async function readLocalAvatar(){
-  try{const db=await database(); const file=await new Promise((resolve,reject)=>{
-    const tx=db.transaction(STORE,'readonly'), req=tx.objectStore(STORE).get(KEY);
-    req.onsuccess=()=>resolve(req.result||null); req.onerror=()=>reject(req.error);
-  });db.close();
-    const credit=document.getElementById('localAvatarCredit'),status=document.getElementById('avatarStatus');
-    if(credit)credit.hidden=!file;
-    if(status)status.textContent=file?'Private VRM selected: '+file.name:'Using the public placeholder. Choose your VRM to replace it on this device.';
-    return file;}
-  catch{return null;}
+function readKey(db,key){return new Promise((resolve,reject)=>{const req=db.transaction(STORE,'readonly').objectStore(STORE).get(key);req.onsuccess=()=>resolve(req.result||null);req.onerror=()=>reject(req.error);});}
+function status(id,message){const el=document.getElementById(id);if(el)el.textContent=message;}
+export async function readLocalModels(){
+  try{
+    const db=await database(),[ruchir,cat]=await Promise.all([readKey(db,'ruchir'),readKey(db,'cat')]);db.close();
+    const credit=document.getElementById('localAvatarCredit');if(credit)credit.hidden=!ruchir;
+    status('avatarStatus',ruchir?'Loading custom Ruchir: '+ruchir.name:'Public placeholder active. Select your Ruchir VRM.');
+    status('catStatus',cat?'Loading custom cat: '+cat.name:'Default cat active. Select your cat VRM.');
+    return {ruchir,cat};
+  }catch(e){status('avatarStatus','Browser storage unavailable: '+e.message);return {ruchir:null,cat:null};}
+}
+export async function readLocalAvatar(){return (await readLocalModels()).ruchir;}
+async function inspect(file){
+  if(file.size>60*1024*1024)throw new Error('VRM must be under 60 MB.');
+  const b=await file.arrayBuffer(),v=new DataView(b);
+  if(v.byteLength<20||v.getUint32(0,true)!==0x46546c67||v.getUint32(4,true)!==2||v.getUint32(8,true)!==b.byteLength)throw new Error('Invalid binary VRM: '+file.name);
+  const n=v.getUint32(12,true);if(v.getUint32(16,true)!==0x4e4f534a||n>v.byteLength-20)throw new Error('Invalid VRM JSON header.');
+  const j=JSON.parse(new TextDecoder().decode(new Uint8Array(b,20,n)));
+  if(!j.extensions?.VRM&&!j.extensions?.VRMC_vrm)throw new Error('Not a VRM model: '+file.name);
+  const cat=j.nodes?.some(n=>/^Tail1_|^LEar1_|^pm0197_/.test(n.name||''))&&j.nodes?.some(n=>/^LThigh_/.test(n.name||''));
+  return {file,key:cat?'cat':'ruchir'};
 }
 export function wireLocalAvatar(){
-  const input=document.getElementById('localAvatarFile'); if(!input)return;
-  document.querySelectorAll('[data-local-avatar]').forEach(btn=>btn.addEventListener('click',()=>input.click()));
+  const input=document.getElementById('localAvatarFile');if(!input)return;
+  let mode='both';
+  document.querySelectorAll('[data-local-avatar]').forEach(btn=>btn.addEventListener('click',()=>{mode=btn.dataset.localAvatar||'ruchir';input.multiple=mode==='both';input.click();}));
   input.addEventListener('change',async()=>{
-    const file=input.files?.[0]; if(!file)return;
+    const files=[...input.files];if(!files.length)return;
     try{
-      if(file.size>60*1024*1024)throw new Error('Choose a VRM under 60 MB.');
-      const b=await file.arrayBuffer(), v=new DataView(b);
-      if(v.byteLength<20||v.getUint32(0,true)!==0x46546c67||v.getUint32(8,true)!==b.byteLength)throw new Error('This is not a valid binary VRM.');
-      const length=v.getUint32(12,true); if(length>v.byteLength-20)throw new Error('VRM JSON header is incomplete.');
-      const j=JSON.parse(new TextDecoder().decode(new Uint8Array(b,20,length)));
-      if(!j.extensions?.VRM&&!j.extensions?.VRMC_vrm)throw new Error('The file does not contain a VRM humanoid.');
-      const db=await database(); await new Promise((resolve,reject)=>{
-        const tx=db.transaction(STORE,'readwrite'); tx.objectStore(STORE).put(file,KEY);
+      const items=await Promise.all(files.map(inspect));
+      if(mode!=='both'&&items.some(x=>x.key!==mode))throw new Error('Choose the '+(mode==='cat'?'cat':'Ruchir')+' VRM, not the other character.');
+      if(new Set(items.map(x=>x.key)).size!==items.length)throw new Error('Select one Ruchir model and one cat model.');
+      const db=await database();await new Promise((resolve,reject)=>{
+        const tx=db.transaction(STORE,'readwrite'),store=tx.objectStore(STORE);for(const {key,file} of items)store.put(file,key);
         tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);
-      });db.close(); location.reload();
-    }catch(e){alert(e.message||'Could not load the local avatar.');}
+      });db.close();location.reload();
+    }catch(e){alert(e.message||'Could not save models.');}
     input.value='';
   });
 }

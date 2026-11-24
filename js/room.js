@@ -21,7 +21,7 @@ const STANDEE_POS = new THREE.Vector3(-3.15, 0, -2.5);
 const SPAWN = new THREE.Vector3(3.9, 0, 2.95);
 const GROUND_DAY = new THREE.Color(0xe6d5bf), GROUND_NIGHT = new THREE.Color(0x262a45);
 
-export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, localAvatar = null }) {
+export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, localAvatar = null, localCat = null }) {
   // ---------- Renderer / scene ----------
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance' });
   const touchDevice = matchMedia('(pointer: coarse)').matches || (navigator.maxTouchPoints>0 && innerWidth<850);
@@ -729,7 +729,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
       if (id === 'ruchir' && !charUrl) {
         avatar.person.visible=true;
         const avatarStatus=document.getElementById('avatarStatus');
-        if(avatarStatus&&localAvatar)avatarStatus.textContent='Custom VRM failed to load. Select the original VRM again.';
+        if(avatarStatus&&localAvatar)avatarStatus.textContent='Custom Ruchir failed: '+String(error?.message||error).slice(0,180);
       }
     },
   });
@@ -825,7 +825,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   }
 
   // ---------- Extras: cat, record player, phone, résumé, lanyards, duck, plant ----------
-  const extras = buildExtras({scene,mesh,std,box,rbox,rod,register,spawn,deskTop,profile:data.profile,collide,moveWithCollision,findFloorPath});
+  const extras = buildExtras({scene,mesh,std,box,rbox,rod,register,spawn,deskTop,profile:data.profile,collide,moveWithCollision,findFloorPath,localCat});
 
   // Contact shadows give furniture weight without another expensive light.
   const contactMat=new THREE.MeshBasicMaterial({map:TX.contactShadowTexture(),transparent:true,depthWrite:false,opacity:.65,polygonOffset:true,polygonOffsetFactor:-1,toneMapped:false});

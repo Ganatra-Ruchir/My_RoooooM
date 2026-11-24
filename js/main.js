@@ -2,7 +2,7 @@
 import * as data from './data.js';
 import { createUI } from './ui.js';
 import { createControls } from './controls.js';
-import { readLocalAvatar, wireLocalAvatar } from './local-avatar.js';
+import { readLocalModels, wireLocalAvatar } from './local-avatar.js';
 wireLocalAvatar();
 
 const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -58,7 +58,7 @@ async function boot() {
 
   // Never silently discard an existing local avatar merely because IndexedDB
   // is slow to open on a mobile device. readLocalAvatar handles storage errors.
-  const localAvatar = await readLocalAvatar();
+  const {ruchir:localAvatar,cat:localCat} = await readLocalModels();
   let createRoom;
   try {
     ({ createRoom } = await import('./room.js'));
@@ -75,7 +75,7 @@ async function boot() {
       canvas: document.getElementById('room'),
       data,
       reducedMotion: reduced,
-      localAvatar,
+      localAvatar,localCat,
       hooks: {
         onProgress: (p) => { bar.style.width = Math.round(p * 100) + '%'; },
         onReady: () => start(),
