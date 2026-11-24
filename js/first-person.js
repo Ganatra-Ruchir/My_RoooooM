@@ -40,6 +40,13 @@ export function createFirstPersonArms() {
       const band = add(arm, new THREE.TorusGeometry(0.04, 0.009, 8, 16), ring, -0.082, 0.34, -0.31);
       band.rotation.x = Math.PI / 2;
     }
+    // Articulated fingers and a thumb around the held object.
+    for(let j=0;j<4;j++){
+      const finger=add(arm,new THREE.CapsuleGeometry(.026,.075+(j===1?.018:0),4,10),skin,(j-1.5)*.045,.345,-.34);
+      finger.rotation.x=-.72;finger.rotation.z=(j-1.5)*.08;
+    }
+    const thumb=add(arm,new THREE.CapsuleGeometry(.033,.08,5,10),skin,-side*.104,.32,-.275);
+    thumb.rotation.z=side*.66;thumb.rotation.x=-.55;
     hands.push(arm);
   }
   // Camera-space lighting avoids blacked-out hands in darker corners.
@@ -63,5 +70,14 @@ export function createFirstPersonArms() {
     });
     root.position.y = Math.sin(t * 1.4) * 0.008;
   }
-  return { root, update };
+  function pose(kind,point=null,motion=0){
+    hands.forEach((arm,i)=>{
+      const s=i===0?-1:1;arm.visible=kind!=='coffee'||i===1;
+      const target=kind==='coffee'?new THREE.Vector3(point.x+.065,point.y+.09,point.z+.04):kind==='book'?new THREE.Vector3(s*.29,-.40,-.73):new THREE.Vector3(s*.22,-.39+((i===1)?motion*.07:0),-.61);
+      arm.rotation.set(-.24,s*-.22,s*.19);
+      const grip=new THREE.Vector3(0,.30,-.26).applyEuler(arm.rotation);
+      arm.position.copy(target).sub(grip);
+    });
+  }
+  return { root, update,pose };
 }

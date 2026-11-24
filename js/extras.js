@@ -120,6 +120,7 @@ export function buildExtras(ctx) {
           if (h.k >= 1) { st.hop = null; const then = st.afterHop; st.afterHop = null; then(); if (st.attend && st.mode !== 'pet') st.mode = 'attend'; }
           break;
         }
+        case 'held': pose='sleep';break;
         case 'attend': pose = 'sit'; st.yawGoal = Math.atan2(camera.position.x - root.position.x, camera.position.z - root.position.z); break;
         case 'pet':
           pose = 'pet'; st.timer -= dt;
@@ -166,11 +167,14 @@ export function buildExtras(ctx) {
         else if (st.mode === 'attend') { if (st.onBean) { st.mode = 'sleep'; st.timer = 5 + Math.random() * 5; } else st.mode = 'walk'; }
       },
       pet() { if (st.mode === 'hop') return; st.mode = 'pet'; st.timer = 2.6; st.lastFx = 0; },
+      hold(){st.hop=null;st.afterHop=null;st.attend=true;st.onBean=false;st.mode='held';},
+      drop(position){root.position.copy(position).setY(0);st.attend=false;st.onBean=false;st.mode='walk';nextTarget();},
     };
   })();
   hitBox(cat.root, 0.42, 0.62, 0.85, 0, 0.3, 0);
-  register(cat.root, { kind: 'cat', index: 0, label: 'Commit the cat 🐈 — click to pet' }, { dir: new THREE.Vector3(0, 0, 0), selectOffset: 0, hoverOffset: 0 });
+  register(cat.root, { kind: 'cat', index: 0, label: 'Pick up Commit the cat' }, { dir: new THREE.Vector3(0, 0, 0), selectOffset: 0, hoverOffset: 0 });
   anchors.cat = () => cat.root.position.clone().add(new THREE.Vector3(0, 0.85, 0));
+  let catHeld=false,catPetTime=0,catReturn=null;
 
   // =====================================================================
   // Record player on a cabinet by the certificate wall
@@ -334,6 +338,11 @@ export function buildExtras(ctx) {
   // =====================================================================
   function update(t, dt, { camera }) {
     cat.update(t, dt, camera);
+    if(catHeld){
+      catPetTime=Math.max(0,catPetTime-dt);
+      cat.root.position.set(0,-.56,-.78).applyQuaternion(camera.quaternion).add(camera.position);
+      cat.root.quaternion.copy(camera.quaternion).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),Math.PI*.68));
+    }
 
     // record player
     playAmt = THREE.MathUtils.damp(playAmt, playing ? 1 : 0, 3, dt);
@@ -375,6 +384,9 @@ export function buildExtras(ctx) {
   function act(kind, action) {
     switch (kind) {
       case 'cat':
+        if(action==='pickup'&&!catHeld){catReturn=cat.root.position.clone();catHeld=true;cat.hold();cat.root.userData.hit.label='Pet Commit';return true;}
+        if(action==='putdown'&&catHeld){catHeld=false;cat.drop(catReturn);cat.root.userData.hit.label='Pick up Commit the cat';return true;}
+        if(action==='pet'&&catHeld){catPetTime=2.6;cat.pet();return true;}
         if (action === 'attend') cat.attend(true);
         if (action === 'release') cat.attend(false);
         if (action === 'pet') cat.pet();
@@ -408,6 +420,8 @@ export function buildExtras(ctx) {
     update, act,
     anchorOf: (kind) => anchors[kind]?.() || null,
     get catPos() { return cat.root.position; },
+    get catHeld(){return catHeld;},
+    get catPetting(){return catPetTime>0?Math.sin(catPetTime*8):0;},
     get plantGrowth() { return growth; },
   };
 }
