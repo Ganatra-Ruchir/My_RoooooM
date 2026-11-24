@@ -17,6 +17,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { loadPhotographicProp } from './photographic-props.js';
 
 const AVATAR_POS = new THREE.Vector3(-0.8, 0, -2.75);
 const STANDEE_POS = new THREE.Vector3(-3.15, 0, -2.5);
@@ -29,15 +30,18 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   const touchDevice = matchMedia('(pointer: coarse)').matches || (navigator.maxTouchPoints>0 && innerWidth<850);
   const lowPower = touchDevice || (navigator.deviceMemory && navigator.deviceMemory < 4);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
-  const pixelLimit = lowPower ? 1 : 1.65;
-  let renderScale = Math.min(window.devicePixelRatio || 1,pixelLimit);
+  const nativeRatio=Math.max(1,window.devicePixelRatio||1);
+  let quality='sharp';
+  try{if(localStorage.getItem('room.graphicsQuality')==='balanced')quality='balanced';}catch{}
+  const sharpRatio=Math.min(nativeRatio,2);
+  let renderScale=quality==='sharp'?sharpRatio:Math.min(nativeRatio,1.25);
   renderer.setPixelRatio(renderScale);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = lowPower ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
   // On a phone, refresh the expensive shadow pass at most six times a second.
   renderer.shadowMap.autoUpdate = !lowPower;
   renderer.shadowMap.needsUpdate = true;
-  renderer.toneMapping = THREE.AgXToneMapping || THREE.ACESFilmicToneMapping;
+  renderer.toneMapping = THREE.NeutralToneMapping || THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
   renderer.setClearColor(0x000000, 0);
 
@@ -49,7 +53,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     const env = new RoomEnvironment();
     const result = pmrem.fromScene(env, .04);
     scene.environment = result.texture;
-    scene.environmentIntensity = .36;
+    // three r160 controls environment strength per material.
     env.dispose(); pmrem.dispose();
   } catch (err) { console.warn('Indoor reflection environment unavailable',err); }
   const camera = new THREE.PerspectiveCamera(32, 1, 0.065, 200);
@@ -70,8 +74,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
       composer.addPass(ao);
     }
     // Subtle lens bloom; very bright halos made the previous room look cartoonish.
-    const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.11, 0.35, 1.18);
-    composer.addPass(bloom);
+    // Deliberately no bloom or depth of field: preserve edge and text sharpness.
     composer.addPass(new OutputPass());
   }
   const controls = new OrbitControls(camera, canvas);
@@ -95,7 +98,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   const loadTex = (url, onLoad) => loader.load(url, (t) => { t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; onLoad?.(t); });
 
   // ---------- Helpers ----------
-  const std = (color, o = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.85, ...o });
+  const std = (color, o = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.85, envMapIntensity:.3, ...o });
   // Tiny repeatable micro-grain gives close-up walls and upholstery a non-plastic
   // surface response. Generated locally; no stock image or unstable network dependency.
   function microGrain(kind, repeatX = 4, repeatY = 4) {
@@ -131,8 +134,9 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   function pbrMap(id,kind,rx,ry){
     const key=[id,kind,rx,ry].join(':');
     if(!pbrCache.has(key)){
-      const rawKey=id+':'+kind;
-      const url='https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/'+id+'/'+id+'_'+kind+'_1k.jpg';
+      const resolution=kind==='diff'?'2k':'1k';
+      const rawKey=id+':'+kind+':'+resolution;
+      const url='https://dl.polyhaven.org/file/ph-assets/Textures/jpg/'+resolution+'/'+id+'/'+id+'_'+kind+'_'+resolution+'.jpg';
       if(!rawPbrCache.has(rawKey))rawPbrCache.set(rawKey,new Promise(resolve=>{
         pbrLoader.load(url,t=>resolve(t),undefined,()=>resolve(null));
       }));
@@ -141,7 +145,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
         const t=source.clone(); t.needsUpdate=true;
         t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(rx,ry);
         t.colorSpace=kind==='diff'?THREE.SRGBColorSpace:THREE.NoColorSpace;
-        t.anisotropy=Math.min(lowPower?2:8,renderer.capabilities.getMaxAnisotropy());
+        t.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());
         return t;
       }));
     }
@@ -163,6 +167,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   }
   function mesh(geo, mat, x = 0, y = 0, z = 0, parent = scene, { cast = true, receive = true } = {}) {
     const m = new THREE.Mesh(geo, mat);
+    for(const material of Array.isArray(mat)?mat:[mat])if(material?.isMeshStandardMaterial&&material.envMapIntensity===1)material.envMapIntensity=.32;
     m.position.set(x, y, z);
     m.castShadow = cast; m.receiveShadow = receive;
     parent.add(m);
@@ -513,25 +518,28 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
 
   // ---------- Desk ----------
   const DESK = { x: -0.8, y: 1.45, z: -1.65, w: 2.9, d: 1.3 };
-  const oak = photograph(std(0x927966, { map:TX.fineWoodTexture(), roughness: 0.58 }), 'dark_wood', 2, 1, {normal:.5});
+  const oak = photograph(std(0xd0bba1,{map:TX.fineWoodTexture(),roughness:.48,envMapIntensity:.3}), 'walnut_veneer', 1, 1, {normal:.42});
   const black = std(0x222326, { roughness: 0.5, metalness: 0.3 });
-  mesh(rbox(DESK.w, 0.08, DESK.d, 0.025), oak, DESK.x, DESK.y, DESK.z);
+  mesh(rbox(DESK.w,.095,DESK.d,.018),oak,DESK.x,DESK.y-.0075,DESK.z);
+  mesh(rbox(DESK.w-.035,.048,DESK.d-.035,.012),std(0x493326,{map:TX.fineWoodTexture(),roughness:.62}),DESK.x,DESK.y-.055,DESK.z);
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) mesh(box(0.06, DESK.y - 0.04, 0.06), black, DESK.x + sx * (DESK.w / 2 - 0.1), (DESK.y - 0.04) / 2, DESK.z + sz * (DESK.d / 2 - 0.1));
   mesh(box(DESK.w - 0.2, 0.05, 0.04), black, DESK.x, 0.35, DESK.z + DESK.d / 2 - 0.1);
   // drawer unit
-  const drawerM = std(0xc99566, { roughness: 0.6 });
-  mesh(box(0.6, 1.05, 1.1), drawerM, 0.25, 0.86, DESK.z);
+  const drawerM=photograph(std(0xb49b83,{map:TX.fineWoodTexture(),roughness:.64}),'walnut_veneer',1,1,{normal:.36});
+  const drawerFace=photograph(std(0xc3aa8d,{map:TX.fineWoodTexture(),roughness:.57}),'walnut_veneer',1,1,{normal:.42});
+  mesh(rbox(.6,1.05,1.1,.025), drawerM, 0.25, 0.86, DESK.z);
   for (let k = 0; k < 3; k++) {
-    mesh(box(0.56, 0.3, 0.02), std(0xd5a374, { roughness: 0.5 }), 0.25, 0.53 + k * 0.33, DESK.z + 0.56);
+    mesh(rbox(.55,.295,.038,.009), drawerFace, 0.25, 0.53 + k * 0.33, DESK.z + 0.56);
     mesh(box(0.18, 0.03, 0.04), black, 0.25, 0.6 + k * 0.33, DESK.z + 0.58);
   }
   const deskTop = DESK.y + 0.04;
 
   // laptop
-  const silver = std(0xc5c9d0, { metalness: 0.6, roughness: 0.35 });
+  const silver = std(0x777675,{metalness:.82,roughness:.31,envMapIntensity:.86,map:TX.brushedMetalTexture()});
   const lap = new THREE.Group(); lap.position.set(DESK.x, deskTop, -1.95); scene.add(lap);
   mesh(rbox(0.8, 0.035, 0.52, 0.015), silver, 0, 0.018, 0, lap);
-  mesh(box(0.7, 0.004, 0.24), std(0x1d1f24), 0, 0.037, 0.06, lap, { cast: false });
+  mesh(box(.7,.004,.235),std(0xffffff,{map:TX.keyboardTexture(),roughness:.83}),0,.037,.055,lap,{cast:false});
+  mesh(rbox(.245,.002,.135,.008),std(0x696866,{metalness:.64,roughness:.38,envMapIntensity:.7}),0,.037,-.14,lap,{cast:false});
   const lid = new THREE.Group(); lid.position.set(0, 0.035, 0.26); lid.rotation.x = 0.28; lap.add(lid);
   mesh(rbox(0.8, 0.52, 0.025, 0.012), silver, 0, 0.26, 0, lid);
   const screen = TX.createScreen();
@@ -541,7 +549,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   mesh(new THREE.CircleGeometry(0.08, 32), new THREE.MeshStandardMaterial({ map: TX.stickerTexture(), roughness: 0.5 }), 0, 0.28, 0.0135, lid, { cast: false });
   mesh(new THREE.CircleGeometry(0.05, 6), std(0x7fd1b9), 0.24, 0.42, 0.0135, lid, { cast: false });
   mesh(new THREE.PlaneGeometry(0.12, 0.07), std(0xffd166), -0.25, 0.12, 0.0135, lid, { cast: false }).rotation.z = 0.2;
-  const screenLight = new THREE.PointLight(0x9fb4ff, 0.3, 3, 2);
+  const screenLight = new THREE.PointLight(0xe3e6e2, .12, 2, 2);
   screenLight.position.set(DESK.x, deskTop + 0.35, -2.1);
   scene.add(screenLight);
 
@@ -567,12 +575,12 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
 
   // desk lamp
   const lampG = new THREE.Group(); lampG.position.set(-1.98, deskTop, -1.42); scene.add(lampG);
-  const lampMat = std(0x2e5b52, { roughness: 0.4, metalness: 0.2 });
+  const lampMat=std(0x79634c,{roughness:.33,metalness:.8,envMapIntensity:.75,map:TX.brushedMetalTexture()});
   mesh(new THREE.CylinderGeometry(0.13, 0.15, 0.05, 20), lampMat, 0, 0.025, 0, lampG);
   const j1 = new THREE.Vector3(0, 0.05, 0), j2 = new THREE.Vector3(0.0, 0.66, -0.2), j3 = new THREE.Vector3(0.36, 0.74, -0.32);
   rod(j1, j2, 0.018, lampMat, lampG); rod(j2, j3, 0.018, lampMat, lampG);
   mesh(new THREE.SphereGeometry(0.035, 10, 8), lampMat, j2.x, j2.y, j2.z, lampG);
-  const shade = mesh(new THREE.ConeGeometry(0.16, 0.24, 24, 1, true), std(0x2e5b52, { side: THREE.DoubleSide, roughness: 0.4 }), j3.x + 0.05, j3.y - 0.06, j3.z, lampG);
+  const shade = mesh(new THREE.ConeGeometry(0.16, 0.24, 24, 1, true), std(0x352e25,{side:THREE.DoubleSide,roughness:.42,metalness:.45,envMapIntensity:.65}), j3.x + 0.05, j3.y - 0.06, j3.z, lampG);
   shade.rotation.z = 0.5;
   const bulbMat = new THREE.MeshStandardMaterial({ color: 0xfff3d6, emissive: 0xffc46b, emissiveIntensity: 0.4 });
   mesh(new THREE.SphereGeometry(0.06, 12, 10), bulbMat, j3.x + 0.07, j3.y - 0.14, j3.z, lampG, { cast: false });
@@ -582,9 +590,11 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
 
   // mug + steam ("coffee-powered late-night build sessions")
   const mugG = new THREE.Group(); mugG.position.set(-0.2, deskTop, -1.22); scene.add(mugG);
-  mesh(new THREE.CylinderGeometry(0.09, 0.08, 0.2, 20), std(0xc2562f, { roughness: 0.45 }), 0, 0.1, 0, mugG);
-  mesh(new THREE.CircleGeometry(0.08, 20), std(0x3b2416, { roughness: 0.2 }), 0, 0.185, 0, mugG).rotation.x = -Math.PI / 2;
-  const handle = mesh(new THREE.TorusGeometry(0.055, 0.016, 8, 16, Math.PI), std(0xc2562f), 0.09, 0.1, 0, mugG);
+  const mugCeramic=std(0x8b7866,{roughness:.29,envMapIntensity:.65,map:TX.ceramicTexture()});
+  const mugProfile=[[0,0],[.063,0],[.077,.012],[.087,.17],[.088,.197],[.079,.201],[.073,.192],[.072,.04],[0,.04]].map(([x,y])=>new THREE.Vector2(x,y));
+  mesh(new THREE.LatheGeometry(mugProfile,40),mugCeramic,0,0,0,mugG);
+  mesh(new THREE.CircleGeometry(.073,36),std(0x28180f,{roughness:.2,envMapIntensity:.62}),0,.174, 0, mugG).rotation.x = -Math.PI / 2;
+  const handle = mesh(new THREE.TorusGeometry(0.055, 0.016, 8, 16, Math.PI), mugCeramic, .09,.1,0,mugG);
   handle.rotation.z = -Math.PI / 2;
   const steamTex = TX.softDotTexture();
   const steam = [];
@@ -601,12 +611,15 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   nb.rotation.set(-Math.PI / 2, 0, 0.18);
   const pen = rod(new THREE.Vector3(-1.2, deskTop + 0.015, -1.15), new THREE.Vector3(-1.0, deskTop + 0.015, -1.38), 0.012, std(0x2b3a67));
   pen.castShadow = true;
-  // small desk plant
-  mesh(new THREE.CylinderGeometry(0.1, 0.08, 0.16, 14), std(0xefe2cc), -2.05, deskTop + 0.08, -2.05);
-  for (let k = 0; k < 7; k++) {
-    const lf = mesh(new THREE.SphereGeometry(0.06, 8, 6), std(0x4f8f57), -2.05 + Math.cos(k * 0.9) * 0.06, deskTop + 0.2 + (k % 3) * 0.03, -2.05 + Math.sin(k * 0.9) * 0.06);
-    lf.scale.set(0.6, 1.5, 0.6); lf.rotation.set(Math.sin(k) * 0.5, 0, Math.cos(k) * 0.5);
+  // Keep local fallback until the original textured model loads completely.
+  const deskPlant=new THREE.Group();deskPlant.position.set(-2.05,deskTop,-2.05);scene.add(deskPlant);
+  const miniFallback=new THREE.Group();deskPlant.add(miniFallback);
+  mesh(new THREE.CylinderGeometry(.105,.082,.16,32),std(0x82776b,{map:TX.ceramicTexture(),roughness:.51}),0,.08,0,miniFallback);
+  for(let k=0;k<9;k++){
+    const a=k*2.4,lf=mesh(new THREE.SphereGeometry(.047,24,16),std(0x264c20,{map:TX.leafTexture(),roughness:.47}),Math.cos(a)*.055,.19+(k%3)*.027,Math.sin(a)*.055,miniFallback);
+    lf.scale.set(.68,1.65,.24);lf.rotation.set(Math.sin(a)*.6,a,Math.cos(a)*.6);
   }
+  loadPhotographicProp('potted_plant_04',.38).then(model=>{if(!model)return;miniFallback.visible=false;deskPlant.add(model);renderer.shadowMap.needsUpdate=true;});
 
   // ---------- Ruchir: 3D avatar typing at the desk ----------
   const avatar = createAvatar();
@@ -775,6 +788,13 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   // ---------- Extras: cat, record player, phone, résumé, lanyards, duck, plant ----------
   const extras = buildExtras({ scene, mesh, std, box, rbox, rod, register, spawn, deskTop, profile: data.profile });
 
+  // Contact shadows give furniture weight without another expensive light.
+  const contactMat=new THREE.MeshBasicMaterial({map:TX.contactShadowTexture(),transparent:true,depthWrite:false,opacity:.65,polygonOffset:true,polygonOffsetFactor:-1,toneMapped:false});
+  for(const [x,z,w,d] of [[DESK.x,DESK.z,3.15,1.6],[-4.25,-4.25,1.12,1.12],[2.7,2.4,1.65,1.45],[.7,1,1.35,1.15],[3,-4.5,3.65,.8]]){
+    const shadow=mesh(new THREE.PlaneGeometry(w,d),contactMat,x,.006,z,scene,{cast:false,receive:false});
+    shadow.rotation.x=-Math.PI/2;shadow.raycast=()=>{};
+  }
+
   // window toggles day / night, desk lamp toggles itself
   const winHit = mesh(new THREE.PlaneGeometry(winW, winH), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }), winCx, winCy, -4.95, scene, { cast: false, receive: false });
   const windowRoot = new THREE.Group(); scene.add(windowRoot); windowRoot.add(winHit);
@@ -814,7 +834,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     color: 0xffd6a8, size: 0.035, transparent: true, opacity: 0.16,
     depthWrite: false, map: TX.softDotTexture(), sizeAttenuation: true,
   }));
-  dust.raycast = () => {}; if(!lowPower)scene.add(dust);
+  dust.raycast=()=>{}; // no haze or dust overlay
 
   // Warm practical lighting on real geometry, with a cool window key.
   const practicalLights = [];
@@ -840,8 +860,8 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   const floorLamp = new THREE.PointLight(0xffba75,23,6,2);
   floorLamp.position.set(4.25,2.25,3.65); scene.add(floorLamp);
   addObstacle([4.25,3.65,.26]);
-  const DAY = { hemi: 0.65, hemiSky: new THREE.Color(0xdce4e5), hemiGround: new THREE.Color(0x726050), sun: 1.7, sunCol: new THREE.Color(0xe6efff), fill: 0.32, lamp: 4, neon: 0.2, screen: 0.32, bulb: 0.6, gallery: 0.8, exposure: 1.13, pic: 1 };
-  const NIGHT = { hemi: 0.34, hemiSky: new THREE.Color(0x96a7b3), hemiGround: new THREE.Color(0x60483b), sun: 0.24, sunCol: new THREE.Color(0xb1c9df), fill: 0.17, lamp: 14, neon: 0.32, screen: 0.65, bulb: 1.2, gallery: 1.0, exposure: 1.16, pic: 1 };
+  const DAY={hemi:.62,hemiSky:new THREE.Color(0xe7e4da),hemiGround:new THREE.Color(0x726050),sun:1.2,sunCol:new THREE.Color(0xfff5df),fill:.22,lamp:3,neon:.18,screen:.10,bulb:.45,gallery:.65,exposure:1.02,pic:1};
+  const NIGHT = {hemi:.39,hemiSky:new THREE.Color(0xc5c0b3),hemiGround:new THREE.Color(0x635443),sun:.22,sunCol:new THREE.Color(0xe1dfd2),fill:.12,lamp:8,neon:.25,screen:.12,bulb:.95,gallery:.75,exposure:1.04,pic:1};
   let nightTarget = 0, night = 0;
   function applyNight(n) {
     const L = (a, b) => a + (b - a) * n;
@@ -852,7 +872,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     sun.color.copy(DAY.sunCol).lerp(NIGHT.sunCol, n);
     fill.intensity = L(DAY.fill, NIGHT.fill);
     cornerBounce.intensity = L(0.35, 1.2);
-    practicalLights.forEach(([light,power])=>{light.intensity=power*L(.62,1);});
+    practicalLights.forEach(([light,power])=>{light.intensity=power*L(.38,.65);});
     floorLamp.intensity=L(10,23); floorShade.emissiveIntensity=L(.25,.8);
     lampLight.intensity = L(DAY.lamp, NIGHT.lamp) * lampAmt;
     neonLight.intensity = L(DAY.neon, NIGHT.neon);
@@ -864,7 +884,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     groundMat.color.copy(GROUND_DAY).lerp(GROUND_NIGHT, n);
     // the ceiling light only matters when you're inside, walking around at night
     const inside = ceiling.visible ? 1 : 0;
-    ceilingLight.intensity = L(0.3, 1.6) * inside;
+    ceilingLight.intensity = L(.12,.35)*inside;
     fixtureMat.emissiveIntensity = L(0.2, 1.6);
     renderer.toneMappingExposure = L(DAY.exposure, NIGHT.exposure);
     sun.shadow.radius=lowPower?1:3;
@@ -1499,9 +1519,9 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     lastFrame=now;
     // Adapt resolution to sustained frame rate rather than sacrifice input response.
     perfElapsed+=elapsed;perfFrames++;
-    if(lowPower && perfElapsed>2.5){
+    if(quality==='balanced' && perfElapsed>2.5){
       const fps=perfFrames/perfElapsed;
-      const next=fps<26?Math.max(.65,renderScale-.1):fps>49?Math.min(pixelLimit,renderScale+.05):renderScale;
+      const next=fps<26?Math.max(1,renderScale-.1):fps>49?Math.min(nativeRatio,1.4,renderScale+.05):renderScale;
       if(Math.abs(next-renderScale)>.02){renderScale=next;renderer.setPixelRatio(renderScale);renderer.setSize(W,H,false);}
       perfElapsed=0;perfFrames=0;
     }
@@ -1544,7 +1564,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
       if (u.dir.lengthSq() > 0) o.position.copy(u.base).addScaledVector(u.dir, u.offset);
       const glowGoal = o === hovered || o === selected || o === glowTarget ? 1 : 0;
       u.glow = THREE.MathUtils.damp(u.glow, glowGoal, 8, dt);
-      for (const m of u.mats) { m.emissive.setRGB(1, 0.78, 0.55); m.emissiveIntensity = u.glow * 0.16; }
+      // The crosshair HUD identifies the object; do not bleach original material colors.
     }
     // Ruchir notices you when you come close, waves once, and looks at you while you talk
     const near = Math.hypot(player.pos.x - ruchir.pos.x, player.pos.z - ruchir.pos.z) < 3.3;
@@ -1653,6 +1673,14 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     whenGuideReady() { return guideReady; },
     startGuidedTour: beginGuidedTour,
     skipGuidedTour(){if(guided.active)finishGuidedTour();},
+    get graphicsQuality(){return quality;},
+    setGraphicsQuality(next){
+      quality=next==='balanced'?'balanced':'sharp';
+      renderScale=quality==='sharp'?sharpRatio:Math.min(nativeRatio,1.25);
+      renderer.setPixelRatio(renderScale);if(composer)composer.setPixelRatio(renderScale);
+      resize();perfElapsed=0;perfFrames=0;
+      try{localStorage.setItem('room.graphicsQuality',quality);}catch{}
+    },
     get isTouring() { return guided.active; },
     get tourFinished() { return guided.finished; },
     get tourProgress() { return guided.active ? Math.min(1, guided.total / tourLength) : Number(guided.finished); },

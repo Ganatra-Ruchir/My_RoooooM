@@ -1,0 +1,5 @@
+Poly Haven CC0 assets (https://polyhaven.com/license):
+potted_plant_02: Rico Cilliers — https://polyhaven.com/a/potted_plant_02
+potted_plant_04: James Ray Cock — https://polyhaven.com/a/potted_plant_04
+walnut_veneer: Jenelle van Heerden — https://polyhaven.com/a/walnut_veneer
+Runtime loads from Poly Haven file CDN; local fallbacks remain available.

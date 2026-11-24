@@ -577,6 +577,7 @@ export function createUI({ room = null }) {
     : [['W S · ↑ ↓', 'walk'], ['A D', 'sidestep'], ['Mouse · ← →', 'look / turn'], ['Shift', 'run'], ['E · Click', 'talk / interact (aim with ＋)'], ['Esc', 'pause, free the mouse'], ['F', 'full screen']]
   ).map(([k, v]) => `<li><kbd>${esc(k)}</kbd><span>${esc(v)}</span></li>`).join('');
   $('#helpKeys').innerHTML = keysHtml;
+  const qualitySelect=$('#graphicsQuality');if(qualitySelect&&room){qualitySelect.value=room.graphicsQuality;qualitySelect.addEventListener('change',()=>room.setGraphicsQuality(qualitySelect.value));}
   $('#playKeys').innerHTML = keysHtml;
   let helpTimer = 0;
   function toggleHelp(show = help.hidden) { help.hidden = !show; clearTimeout(helpTimer); }

@@ -2,6 +2,7 @@
 // event lanyards, rubber duck and the corner plant.
 import * as THREE from 'three';
 import * as TX from './textures.js';
+import {loadPhotographicProp} from './photographic-props.js';
 
 // The cat's patrol loop around the open floor (checked to avoid furniture).
 const RING = [[-3.6, -1.2], [-3.7, 2.6], [-1.2, 3.9], [2.0, 4.1], [3.6, 3.3], [3.85, 2.6], [3.85, -0.3], [3.0, -2.9], [1.6, -0.4], [-1.5, -0.4]]
@@ -280,12 +281,13 @@ export function buildExtras(ctx) {
   // =====================================================================
   const plant = new THREE.Group(); plant.position.set(-4.25, 0, -4.25); scene.add(plant);
   // Sculpted ceramic planter with a proper rim, recessed soil, and organic foliage.
-  const ceramic=new THREE.MeshStandardMaterial({color:0x39352e,roughness:.61,metalness:.08,map:TX.ceramicTexture(),bumpMap:TX.ceramicTexture(),bumpScale:.021});
+  const fallbackPlant=new THREE.Group();plant.add(fallbackPlant);
+  const ceramic=new THREE.MeshStandardMaterial({color:0x38322a,roughness:.57,metalness:.05,envMapIntensity:.25,map:TX.ceramicTexture(),bumpMap:TX.ceramicTexture(),bumpScale:.012});
   const profilePoints=[[0,0],[.26,0],[.29,.025],[.34,.12],[.405,.49],[.407,.59],[.395,.635],[.365,.65],[.342,.626],[.345,.565]].map(([x,y])=>new THREE.Vector2(x,y));
-  mesh(new THREE.LatheGeometry(profilePoints,48),ceramic,0,0,0,plant);
-  const soil=mesh(new THREE.CircleGeometry(.349,40),new THREE.MeshStandardMaterial({color:0x63503b,map:TX.ceramicTexture(),roughness:1}),0,.565,0,plant);
+  mesh(new THREE.LatheGeometry(profilePoints,48),ceramic,0,0,0,fallbackPlant);
+  const soil=mesh(new THREE.CircleGeometry(.349,40),new THREE.MeshStandardMaterial({color:0x63503b,map:TX.ceramicTexture(),roughness:1}),0,.565,0,fallbackPlant);
   soil.rotation.x=-Math.PI/2;
-  const foliage=new THREE.Group();foliage.position.y=.57;plant.add(foliage);
+  const foliage=new THREE.Group();foliage.position.y=.57;fallbackPlant.add(foliage);
   // Curved pointed leaves, with a raised midrib and photographic-style vein texture.
   // Instancing keeps all leaves and all stalks to two draw calls on mobile.
   function leafGeometry(){
@@ -301,7 +303,7 @@ export function buildExtras(ctx) {
     for(let i=0;i<rows;i++)for(let j=0;j<cols;j++){const k=i*(cols+1)+j;indices.push(k,k+1,k+cols+1,k+1,k+cols+2,k+cols+1);}
     const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));geo.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));geo.setIndex(indices);geo.computeVertexNormals();return geo;
   }
-  const leavesCount=28,leafMat=new THREE.MeshPhysicalMaterial({color:0xffffff,map:TX.leafTexture(),bumpMap:TX.leafTexture(),bumpScale:.012,roughness:.68,clearcoat:.08,clearcoatRoughness:.65,side:THREE.DoubleSide});
+  const leavesCount=28,leafMat=new THREE.MeshPhysicalMaterial({color:0xa1b895,map:TX.leafTexture(),bumpMap:TX.leafTexture(),bumpScale:.008,roughness:.44,envMapIntensity:.35,clearcoat:.16,clearcoatRoughness:.55,side:THREE.DoubleSide});
   const leaves=new THREE.InstancedMesh(leafGeometry(),leafMat,leavesCount);
   const stalks=new THREE.InstancedMesh(new THREE.CylinderGeometry(.008,.013,1,7),std(0x50613a,{roughness:.87}),leavesCount);
   const obj=new THREE.Object3D(),up=new THREE.Vector3(0,1,0),dir=new THREE.Vector3();
@@ -312,7 +314,7 @@ export function buildExtras(ctx) {
     dir.set(Math.cos(angle)*.88,.38-.48*(layer/6),Math.sin(angle)*.88).normalize();
     obj.position.copy(end);obj.quaternion.setFromUnitVectors(up,dir);obj.rotateY(Math.sin(k*2.7)*.45);
     const size=.72+.37*(.5+.5*Math.sin(k*5.2));obj.scale.set(size,size,size);obj.updateMatrix();leaves.setMatrixAt(k,obj.matrix);
-    leaves.setColorAt(k,new THREE.Color().setHSL(.27+(k%5)*.009,.43,.29+(k%6)*.025));
+    leaves.setColorAt(k,new THREE.Color().setHSL(.26+(k%5)*.01,.58,.30+(k%6)*.025));
   }
   leaves.instanceMatrix.needsUpdate=true;stalks.instanceMatrix.needsUpdate=true;leaves.instanceColor.needsUpdate=true;
   leaves.castShadow=true;leaves.receiveShadow=true;stalks.castShadow=true;stalks.receiveShadow=true;
@@ -324,7 +326,8 @@ export function buildExtras(ctx) {
   foliage.scale.setScalar(growth);
   register(plant, { kind: 'plant', index: 0, label: 'Water the plant' }, { dir: new THREE.Vector3(0, 0, 0), selectOffset: 0, hoverOffset: 0 });
   anchors.plant = () => plant.position.clone().add(new THREE.Vector3(0.3, 2.2 * growth, 0.3));
-  let wiggle = 0;
+  let wiggle=0,photoPlant=null;
+  loadPhotographicProp('potted_plant_02',2.15).then(model=>{if(!model)return;photoPlant=model;plant.add(model);fallbackPlant.visible=false;model.scale.multiplyScalar(1+(growth-1)*.35);});
 
   // =====================================================================
   // Update + actions
@@ -364,6 +367,7 @@ export function buildExtras(ctx) {
     duckBody.scale.set(1 + squash * 0.25, 1 - squash * 0.35, 1 + squash * 0.25);
     wiggle = THREE.MathUtils.damp(wiggle, 0, 2.5, dt);
     foliage.rotation.z = Math.sin(t * 9) * 0.06 * wiggle;
+    if(photoPlant)photoPlant.rotation.z=Math.sin(t*8)*.015*wiggle;
     foliage.rotation.x = Math.cos(t * 7) * 0.04 * wiggle;
     foliage.scale.setScalar(THREE.MathUtils.damp(foliage.scale.x, growth, 3, dt));
   }
@@ -387,7 +391,7 @@ export function buildExtras(ctx) {
       case 'lanyard': swingAmp = 0.35; return true;
       case 'duck': squash = 1; return true;
       case 'plant': {
-        growth = Math.min(1.35, growth + 0.05);
+        const previousGrowth=growth;growth=Math.min(1.35,growth+.05);if(photoPlant)photoPlant.scale.multiplyScalar((1+(growth-1)*.35)/(1+(previousGrowth-1)*.35));
         try { localStorage.setItem('room.plantGrowth', String(growth)); } catch { /* ignore */ }
         wiggle = 1;
         for (let i = 0; i < 9; i++) {

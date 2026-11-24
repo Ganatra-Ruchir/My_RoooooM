@@ -519,3 +519,8 @@ export function ceramicTexture(){
   for(let i=0;i<img.data.length;i+=4){const v=185+r()*48+Math.sin((i/4)%256*.1)*8;img.data[i]=v;img.data[i+1]=v-5;img.data[i+2]=v-11;img.data[i+3]=255;}
   x.putImageData(img,0,0);return ceramicMap=toTexture(c,{repeat:[2,2],aniso:4});
 }
+
+let brushedMap,keyboardMap,contactMap;
+export function brushedMetalTexture(){if(brushedMap)return brushedMap;const [c,x]=canvas(512,512),r=rng(812);const a=x.createImageData(512,512);for(let y=0;y<512;y++){const line=r()*22;for(let i=0;i<512;i++){const k=(y*512+i)*4,v=186+line+r()*14;a.data[k]=v;a.data[k+1]=v;a.data[k+2]=v;a.data[k+3]=255;}}x.putImageData(a,0,0);return brushedMap=toTexture(c);}
+export function keyboardTexture(){if(keyboardMap)return keyboardMap;const [c,x]=canvas(1024,384);x.fillStyle='#151515';x.fillRect(0,0,1024,384);const rows=['1234567890-=','QWERTYUIOP[]','ASDFGHJKL;','ZXCVBNM,./'];x.font='20px sans-serif';for(let y=0;y<rows.length;y++){const row=rows[y],w=900/row.length;for(let i=0;i<row.length;i++){const a=60+i*w,b=20+y*70;x.fillStyle='#383735';x.fillRect(a,b,w-6,60);x.fillStyle='#c8c5bd';x.fillText(row[i],a+9,b+24);}}x.fillStyle='#383735';x.fillRect(300,306,420,56);return keyboardMap=toTexture(c);}
+export function contactShadowTexture(){if(contactMap)return contactMap;const [c,x]=canvas(128,128),g=x.createRadialGradient(64,64,6,64,64,64);g.addColorStop(0,'rgba(0,0,0,.9)');g.addColorStop(.48,'rgba(0,0,0,.46)');g.addColorStop(1,'rgba(0,0,0,0)');x.fillStyle=g;x.fillRect(0,0,128,128);return contactMap=toTexture(c);}

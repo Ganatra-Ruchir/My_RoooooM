@@ -955,3 +955,6 @@ body.touch .guided-tour-panel,body.touch .tour-finished,body.touch .joy,body.tou
 body.touch .crosshair,body.touch .world-hud,body.touch .marker,body.touch #tooltip{pointer-events:none!important}
 body.touch #room{touch-action:none;overscroll-behavior:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 body.touch .joy{touch-action:none;user-select:none;-webkit-user-select:none}
+
+/* Sharp gameplay: no filters over the scene or HUD. */
+#room{filter:none!important;image-rendering:auto}body.at-game .topbar,body.at-game .dock,body.at-game .prompt,body.at-game .world-hud{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}.graphics-setting{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px;font-size:12px}.graphics-setting select{max-width:170px;background:var(--card-solid);color:var(--ink);padding:6px;border:1px solid var(--line);border-radius:6px}
