@@ -41,7 +41,9 @@ export function wireLocalAvatar(){
       const db=await database();await new Promise((resolve,reject)=>{
         const tx=db.transaction(STORE,'readwrite'),store=tx.objectStore(STORE);for(const {key,file} of items)store.put(file,key);
         tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);
-      });db.close();location.reload();
+      });db.close();
+      for(const {key,file} of items)status(key==='cat'?'catStatus':'avatarStatus','Saved '+file.name+' — reloading room…');
+      location.reload();
     }catch(e){alert(e.message||'Could not save models.');}
     input.value='';
   });

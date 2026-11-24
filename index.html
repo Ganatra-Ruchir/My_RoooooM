@@ -85,7 +85,7 @@
       <label class="mouse-invert"><input type="checkbox" id="invertMouse"> Invert vertical look</label>
     </div>
     <button type="button" id="tourExploreBtn">▶ Start Exploring</button>
-    <button type="button" class="ghost-btn local-avatar-link" data-local-avatar>Private avatar settings</button>
+    <button type="button" class="ghost-btn local-avatar-link" data-local-avatar="both">Load Ruchir &amp; cat VRMs</button>
   </section>
   <!-- No floating object name or description over the crosshair. -->
 
@@ -103,14 +103,14 @@
       <ul class="help-keys play-keys" id="playKeys"></ul>
       <p class="mouse-tip">Mouse = camera · WASD = move · Shift = sprint · E = interact</p>
       <button class="ghost-btn play-text" id="playText" type="button">Prefer reading? Open the text version</button>
-      <button class="ghost-btn play-text" type="button" data-local-avatar>Load Ruchir VRM locally</button>
+      <button class="ghost-btn play-text model-picker" type="button" data-local-avatar="both">Load Ruchir &amp; cat VRMs</button>
     </div>
   </div>
 
   <!-- controls help -->
   <aside class="help" id="help" aria-label="Controls" hidden>
-    <p class="help-title">Explore the room</p>
-    <ul class="help-keys" id="helpKeys"></ul><label class="graphics-setting">Graphics <select id="graphicsQuality"><option value="sharp">Sharp HD</option><option value="balanced">Balanced / smoother</option></select></label><button type="button" class="ghost-btn" data-local-avatar id="avatarSettings">Choose Ruchir VRM</button><small id="avatarStatus" aria-live="polite" style="display:block;font-size:11px"></small><button type="button" class="ghost-btn" data-local-avatar="cat">Choose cat VRM</button><small id="catStatus" aria-live="polite" style="display:block;font-size:11px"></small><button type="button" class="ghost-btn" data-local-avatar="both">Load both VRMs</button><small style="display:block;font-size:10px">Private, noncommercial preview for cat; files remain on this device.</small><button type="button" class="ghost-btn" id="guideRetry" hidden>Retry Meera</button><small id="guideStatus" aria-live="polite"></small><button type="button" class="ghost-btn" id="voicePreview">Preview Meera voice</button><small id="voiceStatus" aria-live="polite"></small><small id="materialInfo" style="display:block;margin-top:8px;font-size:10px;line-height:1.4;color:var(--muted)"></small>
+    <p class="help-title">Explore the room</p><section class="model-settings" aria-label="Private character models"><strong>Custom characters</strong><button type="button" class="ghost-btn model-picker" data-local-avatar="both">Load both VRMs</button><small>Select the two original VRM files. They stay on this device.</small></section>
+    <ul class="help-keys" id="helpKeys"></ul><label class="graphics-setting">Graphics <select id="graphicsQuality"><option value="sharp">Sharp HD</option><option value="balanced">Balanced / smoother</option></select></label><button type="button" class="ghost-btn" data-local-avatar id="avatarSettings">Choose Ruchir VRM</button><small id="avatarStatus" aria-live="polite" style="display:block;font-size:11px"></small><button type="button" class="ghost-btn" data-local-avatar="cat">Choose cat VRM</button><small id="catStatus" aria-live="polite" style="display:block;font-size:11px"></small><small style="display:block;font-size:10px">Private, noncommercial preview for cat; files remain on this device.</small><button type="button" class="ghost-btn" id="guideRetry" hidden>Retry Meera</button><small id="guideStatus" aria-live="polite"></small><button type="button" class="ghost-btn" id="voicePreview">Preview Meera voice</button><small id="voiceStatus" aria-live="polite"></small><small id="materialInfo" style="display:block;margin-top:8px;font-size:10px;line-height:1.4;color:var(--muted)"></small>
   </aside>
   <button class="help-btn" id="helpBtn" type="button" aria-label="Show controls (H)">?</button>
 

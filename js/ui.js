@@ -641,7 +641,7 @@ export function createUI({ room = null }) {
   audit.addEventListener('click',()=>{if(!room)return;const checks=room.runPhysicsAudit();auditInfo.textContent=checks.filter(x=>x.pass).length+'/'+checks.length+' passed\n'+checks.map(x=>(x.pass?'✓ ':'✕ ')+x.name).join('\n');showMaterialInfo();});
   let helpTimer = 0;
   function toggleHelp(show = help.hidden) { help.hidden = !show; clearTimeout(helpTimer); }
-  function hideHelpSoon() { if (!help.hidden && !helpTimer) helpTimer = setTimeout(() => { help.hidden = true; helpTimer = 0; }, 4000); }
+  function hideHelpSoon() { /* Explicit settings stay open until the user closes them. */ }
   $('#helpBtn').addEventListener('click', () => toggleHelp());
 
   // Icon-only context controls. Accessible names are not drawn on screen.

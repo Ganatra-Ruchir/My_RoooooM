@@ -996,3 +996,6 @@ body.at-play .act-btn,body.tour-active .act-btn,body.chatting .act-btn,body.draw
 .book-toolbar{margin:4px 0;padding:4px 8px}.book-toolbar button{min-height:32px}
 body.book-open .topbar,body.book-open .dock,body.book-open .help-btn{visibility:hidden}
 @media(max-width:650px){#roomBook{width:94vw;max-height:78dvh;margin:auto}.book-spread{aspect-ratio:1.3;max-height:46dvh;padding:6px 7px 10px}.book-page,.book-page+.book-page{padding:10px;font-size:clamp(11px,3.1vw,14px);line-height:1.4}.book-page h2{font-size:clamp(16px,4.3vw,22px)}.book-kicker{font-size:8px;letter-spacing:.07em}.book-page img{max-height:95px}.book-toolbar button{font-size:12px}.book-page h3{font-size:14px}}
+
+/* Keep mobile controls and model selection reachable on short screens. */
+.help{max-height:calc(100dvh - 110px);overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y}.model-settings{display:grid;gap:6px;margin-bottom:12px;padding:10px;border:1px solid var(--line);border-radius:10px}.model-settings small{font-size:11px;line-height:1.4}.model-picker{min-height:40px;white-space:normal}.model-settings .model-picker{width:100%}@media(max-width:800px),(pointer:coarse){body.touch .help{max-height:calc(100dvh - 145px);overflow-y:auto;touch-action:pan-y}.tour-finished .local-avatar-link{min-height:36px;font-size:13px}}
