@@ -3,3 +3,5 @@ potted_plant_02: Rico Cilliers — https://polyhaven.com/a/potted_plant_02
 potted_plant_04: James Ray Cock — https://polyhaven.com/a/potted_plant_04
 walnut_veneer: Jenelle van Heerden — https://polyhaven.com/a/walnut_veneer
 Runtime loads from Poly Haven file CDN; local fallbacks remain available.
+
+ArmChair_01: Kirill Sannikov — https://polyhaven.com/a/ArmChair_01 (CC0). Browser model loading has a local fallback.

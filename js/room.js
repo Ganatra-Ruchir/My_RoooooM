@@ -17,7 +17,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { loadPhotographicProp } from './photographic-props.js';
+import { loadPhotographicProp, propStatus } from './photographic-props.js';
 
 const AVATAR_POS = new THREE.Vector3(-0.8, 0, -2.75);
 const STANDEE_POS = new THREE.Vector3(-3.15, 0, -2.5);
@@ -33,7 +33,9 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   const nativeRatio=Math.max(1,window.devicePixelRatio||1);
   let quality='sharp';
   try{if(localStorage.getItem('room.graphicsQuality')==='balanced')quality='balanced';}catch{}
-  const sharpRatio=Math.min(nativeRatio,2);
+  // Keep sharp rendering on high-DPI displays; limit total pixels to protect GPU memory.
+  const initialArea=Math.max(1,innerWidth*innerHeight);
+  const sharpRatio=Math.min(nativeRatio,2.65,Math.max(1.5,Math.sqrt(3000000/initialArea)));
   let renderScale=quality==='sharp'?sharpRatio:Math.min(nativeRatio,1.25);
   renderer.setPixelRatio(renderScale);
   renderer.shadowMap.enabled = true;
@@ -130,7 +132,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   // CC0 photographic material maps, loaded lazily with existing local
   // surfaces as fallback. Normal and roughness data are linear, not sRGB.
   const pbrLoader=new THREE.TextureLoader();
-  const pbrCache=new Map(), rawPbrCache=new Map();
+  const pbrCache=new Map(), rawPbrCache=new Map(),materialStatus=new Map();
   function pbrMap(id,kind,rx,ry){
     const key=[id,kind,rx,ry].join(':');
     if(!pbrCache.has(key)){
@@ -138,7 +140,8 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
       const rawKey=id+':'+kind+':'+resolution;
       const url='https://dl.polyhaven.org/file/ph-assets/Textures/jpg/'+resolution+'/'+id+'/'+id+'_'+kind+'_'+resolution+'.jpg';
       if(!rawPbrCache.has(rawKey))rawPbrCache.set(rawKey,new Promise(resolve=>{
-        pbrLoader.load(url,t=>resolve(t),undefined,()=>resolve(null));
+        materialStatus.set(rawKey,'loading');
+        pbrLoader.load(url,t=>{materialStatus.set(rawKey,'ready');resolve(t);},undefined,()=>{materialStatus.set(rawKey,'fallback');resolve(null);});
       }));
       pbrCache.set(key,rawPbrCache.get(rawKey).then(source=>{
         if(!source)return null;
@@ -216,7 +219,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   const cut = std(0x49443e, { roughness: 0.97, map: plasterGrain });
   const floorTex = TX.floorTexture();
   const floorEdge = std(0x6e4c36);
-  const floorMat = photograph(std(0xb6a08a, { map: floorTex, roughness: 0.58 }), 'old_wooden_floor_01', 4, 4, {normal:.62});
+  const floorMat = photograph(std(0x97806a, { map: floorTex, roughness: 0.53 }), 'old_wooden_floor_01', 3, 3, {normal:.55});
   photograph(cream,'painted_plaster_wall',3,2,{color:false,normal:.25,rough:false});
   photograph(green,'painted_plaster_wall',3,2,{color:false,normal:.25,rough:false});
   mesh(box(10 + T, 0.5, 10 + T), [floorEdge, floorEdge, floorMat, floorEdge, floorEdge, floorEdge], -T / 2, -0.25, -T / 2, scene, { cast: false });
@@ -331,7 +334,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   const glassPane = mesh(new THREE.PlaneGeometry(winW, winH), glass, winCx, winCy, -5.16, scene, { cast: false, receive: false });
   glassPane.raycast = () => {};
   // curtains
-  const curtainMat = photograph(std(0x55504b, { side: THREE.DoubleSide, roughness: .92 }), 'rough_linen', 2, 5, {color:false,normal:.5,rough:false});
+  const curtainMat = photograph(new THREE.MeshPhysicalMaterial({color:0x3e3831,map:fabricGrain,side:THREE.DoubleSide,roughness:.94,sheen:.23,sheenColor:new THREE.Color(0x8d7b66),envMapIntensity:.12}), 'rough_linen', 2, 5, {color:false,normal:.5,rough:false});
   for (const s of [-1, 1]) {
     const geo = new THREE.PlaneGeometry(0.94, 4.7, 64, 28);
     const pos = geo.attributes.position;
@@ -518,19 +521,21 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
 
   // ---------- Desk ----------
   const DESK = { x: -0.8, y: 1.45, z: -1.65, w: 2.9, d: 1.3 };
-  const oak = photograph(std(0xd0bba1,{map:TX.fineWoodTexture(),roughness:.48,envMapIntensity:.3}), 'walnut_veneer', 1, 1, {normal:.42});
-  const black = std(0x222326, { roughness: 0.5, metalness: 0.3 });
+  const oak = photograph(std(0xc1a68a,{map:TX.fineWoodTexture(),roughness:.46,envMapIntensity:.32}), 'walnut_veneer', 2, 1, {normal:.55});
+  const black = std(0x242320, { roughness: 0.44, metalness: 0.66,map:TX.brushedMetalTexture(),envMapIntensity:.38 });
   mesh(rbox(DESK.w,.095,DESK.d,.018),oak,DESK.x,DESK.y-.0075,DESK.z);
   mesh(rbox(DESK.w-.035,.048,DESK.d-.035,.012),std(0x493326,{map:TX.fineWoodTexture(),roughness:.62}),DESK.x,DESK.y-.055,DESK.z);
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) mesh(box(0.06, DESK.y - 0.04, 0.06), black, DESK.x + sx * (DESK.w / 2 - 0.1), (DESK.y - 0.04) / 2, DESK.z + sz * (DESK.d / 2 - 0.1));
   mesh(box(DESK.w - 0.2, 0.05, 0.04), black, DESK.x, 0.35, DESK.z + DESK.d / 2 - 0.1);
   // drawer unit
-  const drawerM=photograph(std(0xb49b83,{map:TX.fineWoodTexture(),roughness:.64}),'walnut_veneer',1,1,{normal:.36});
-  const drawerFace=photograph(std(0xc3aa8d,{map:TX.fineWoodTexture(),roughness:.57}),'walnut_veneer',1,1,{normal:.42});
+  const drawerM=photograph(std(0x756052,{map:TX.fineWoodTexture(),roughness:.64}),'walnut_veneer',1,1,{normal:.36});
+  const drawerFace=photograph(std(0x9f856c,{map:TX.fineWoodTexture(),roughness:.57}),'walnut_veneer',1,1,{normal:.42});
   mesh(rbox(.6,1.05,1.1,.025), drawerM, 0.25, 0.86, DESK.z);
   for (let k = 0; k < 3; k++) {
     mesh(rbox(.55,.295,.038,.009), drawerFace, 0.25, 0.53 + k * 0.33, DESK.z + 0.56);
-    mesh(box(0.18, 0.03, 0.04), black, 0.25, 0.6 + k * 0.33, DESK.z + 0.58);
+    const yy=.6+k*.33;
+    for(const xx of [.17,.33])mesh(rbox(.024,.028,.044,.007),black,xx,yy,DESK.z+.598);
+    mesh(rbox(.19,.027,.026,.01),black,.25,yy,DESK.z+.62);
   }
   const deskTop = DESK.y + 0.04;
 
@@ -607,10 +612,20 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   }
 
   // open notebook + pen (where the drafts start)
-  const nb = mesh(new THREE.PlaneGeometry(0.72, 0.48), new THREE.MeshStandardMaterial({ map: TX.notebookTexture(), roughness: 0.9 }), -1.45, deskTop + 0.006, -1.28, scene, { cast: false });
-  nb.rotation.set(-Math.PI / 2, 0, 0.18);
-  const pen = rod(new THREE.Vector3(-1.2, deskTop + 0.015, -1.15), new THREE.Vector3(-1.0, deskTop + 0.015, -1.38), 0.012, std(0x2b3a67));
-  pen.castShadow = true;
+  const notebook=new THREE.Group();notebook.position.set(-1.45,deskTop+.007,-1.28);notebook.rotation.y=-.18;scene.add(notebook);
+  const binding=std(0x42342a,{map:fabricGrain,roughness:.91});
+  const pageBlock=std(0xc8bda8,{map:TX.paperEdgesTexture(),roughness:.92});
+  mesh(rbox(.75,.021,.50,.008),binding,0,.008,0,notebook);
+  for(const side of [-1,1])mesh(rbox(.347,.026,.468,.009),pageBlock,side*.179,.028,0,notebook);
+  const pageGeo=new THREE.PlaneGeometry(.72,.48,32,12);
+  const pagePos=pageGeo.attributes.position;
+  for(let i=0;i<pagePos.count;i++){const x=pagePos.getX(i);pagePos.setZ(i,.013*Math.exp(-Math.abs(x)*13)+.004*Math.pow(Math.abs(x)/.36,3));}
+  pageGeo.computeVertexNormals();
+  mesh(pageGeo,new THREE.MeshStandardMaterial({map:TX.notebookTexture(),roughness:.92,envMapIntensity:.1}),0,.043,0,notebook,{cast:false}).rotation.x=-Math.PI/2;
+  const penStart=new THREE.Vector3(-1.2,deskTop+.025,-1.15),penEnd=new THREE.Vector3(-1.0,deskTop+.025,-1.38);
+  const pen=rod(penStart,penEnd,.009,std(0x26282a,{roughness:.25,metalness:.55,envMapIntensity:.5}));
+  const metalTip=penEnd.clone().lerp(penStart,-.07);
+  rod(penEnd,metalTip,.005,std(0xa69a83,{metalness:.85,roughness:.25}));
   // Keep local fallback until the original textured model loads completely.
   const deskPlant=new THREE.Group();deskPlant.position.set(-2.05,deskTop,-2.05);scene.add(deskPlant);
   const miniFallback=new THREE.Group();deskPlant.add(miniFallback);
@@ -735,7 +750,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
   }), 'rough_linen', 2, 2, {color:false,normal:.65,rough:true});
   // One upholstered reading chair, no sofa. Keep its footprint within the old beanbag collider.
   const chair = new THREE.Group(); chair.position.set(2.7,0,2.4); chair.rotation.y = -0.65; scene.add(chair);
-  const chairWood = photograph(std(0x997c61, {roughness:.48}), 'dark_wood', 1, 1, {normal:.45});
+  const chairWood = photograph(std(0x997c61, {map:TX.fineWoodTexture(),roughness:.48}), 'dark_wood', 1, 1, {normal:.45});
   mesh(rbox(1.1,.25,1.05,.08),chairWood,0,.31,0,chair);
   mesh(rbox(1.02,.26,.93,.12),loungeFabric,0,.53,.06,chair);
   const back = mesh(rbox(1.07,.93,.22,.09),loungeFabric,0,1.02,-.45,chair); back.rotation.x=-.13;
@@ -744,6 +759,14 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     for(const z of [-.38,.38]) mesh(rbox(.10,.28,.10,.025),chairWood,side*.43,.14,z,chair);
   }
   const pillow=mesh(rbox(.46,.42,.18,.08),std(0x49372d,{map:fabricGrain,roughness:.94}),.12,.89,-.23,chair); pillow.rotation.z=-.12;
+  const chairFallback=[...chair.children];
+  loadPhotographicProp('ArmChair_01',1.50,1.32,1.32).then(model=>{
+    if(!model)return;
+    chairFallback.forEach(o=>o.visible=false);chair.add(model);
+    // Dense model geometry is excluded from raycasts; block rays at its footprint.
+    const blocker=mesh(box(1.10,1.30,1.10),new THREE.MeshBasicMaterial({transparent:true,opacity:0,depthWrite:false,colorWrite:false}),0,.65,0,chair,{cast:false,receive:false});
+    blocker.userData.interactionProxy=true;renderer.shadowMap.needsUpdate=true;
+  });
   // low coffee table on the rug with a stack of webtoon comics and a sketch pad
   const tableG = new THREE.Group(); tableG.position.set(0.7, 0, 1.0); tableG.rotation.y = 0.25; scene.add(tableG);
   mesh(rbox(1.02,.13,.86,.035),oak,0,.47,0,tableG);
@@ -1674,6 +1697,7 @@ export function createRoom({ canvas, data, hooks = {}, reducedMotion = false, lo
     startGuidedTour: beginGuidedTour,
     skipGuidedTour(){if(guided.active)finishGuidedTour();},
     get graphicsQuality(){return quality;},
+    get materialDiagnostics(){return {models:Object.fromEntries(propStatus),maps:Object.fromEntries(materialStatus),pixelRatio:renderer.getPixelRatio(),width:renderer.domElement.width,height:renderer.domElement.height};},
     setGraphicsQuality(next){
       quality=next==='balanced'?'balanced':'sharp';
       renderScale=quality==='sharp'?sharpRatio:Math.min(nativeRatio,1.25);

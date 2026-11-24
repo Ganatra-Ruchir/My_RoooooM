@@ -579,6 +579,14 @@ export function createUI({ room = null }) {
   $('#helpKeys').innerHTML = keysHtml;
   const qualitySelect=$('#graphicsQuality');if(qualitySelect&&room){qualitySelect.value=room.graphicsQuality;qualitySelect.addEventListener('change',()=>room.setGraphicsQuality(qualitySelect.value));}
   $('#playKeys').innerHTML = keysHtml;
+  const qualityInfo=$('#materialInfo');
+  function showMaterialInfo(){
+    if(!qualityInfo||!room)return;
+    const d=room.materialDiagnostics,models=Object.values(d.models),maps=Object.values(d.maps);
+    qualityInfo.textContent='Render '+d.width+' × '+d.height+' px · Models '+models.filter(x=>x==='ready').length+'/'+models.length+' · Texture maps '+maps.filter(x=>x==='ready').length+'/'+maps.length+' loaded'+(models.includes('fallback')||maps.includes('fallback')?' · Some assets using fallback':'');
+  }
+  $('#helpBtn').addEventListener('click',showMaterialInfo);
+  qualitySelect?.addEventListener('change',showMaterialInfo);
   let helpTimer = 0;
   function toggleHelp(show = help.hidden) { help.hidden = !show; clearTimeout(helpTimer); }
   function hideHelpSoon() { if (!help.hidden && !helpTimer) helpTimer = setTimeout(() => { help.hidden = true; helpTimer = 0; }, 4000); }

@@ -303,7 +303,7 @@ export function buildExtras(ctx) {
     for(let i=0;i<rows;i++)for(let j=0;j<cols;j++){const k=i*(cols+1)+j;indices.push(k,k+1,k+cols+1,k+1,k+cols+2,k+cols+1);}
     const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(verts,3));geo.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));geo.setIndex(indices);geo.computeVertexNormals();return geo;
   }
-  const leavesCount=28,leafMat=new THREE.MeshPhysicalMaterial({color:0xa1b895,map:TX.leafTexture(),bumpMap:TX.leafTexture(),bumpScale:.008,roughness:.44,envMapIntensity:.35,clearcoat:.16,clearcoatRoughness:.55,side:THREE.DoubleSide});
+  const leavesCount=28,leafMat=new THREE.MeshPhysicalMaterial({color:0xffffff,map:TX.leafTexture(),bumpMap:TX.leafTexture(),bumpScale:.006,roughness:.47,envMapIntensity:.15,clearcoat:.08,clearcoatRoughness:.48,side:THREE.DoubleSide});
   const leaves=new THREE.InstancedMesh(leafGeometry(),leafMat,leavesCount);
   const stalks=new THREE.InstancedMesh(new THREE.CylinderGeometry(.008,.013,1,7),std(0x50613a,{roughness:.87}),leavesCount);
   const obj=new THREE.Object3D(),up=new THREE.Vector3(0,1,0),dir=new THREE.Vector3();
@@ -314,7 +314,7 @@ export function buildExtras(ctx) {
     dir.set(Math.cos(angle)*.88,.38-.48*(layer/6),Math.sin(angle)*.88).normalize();
     obj.position.copy(end);obj.quaternion.setFromUnitVectors(up,dir);obj.rotateY(Math.sin(k*2.7)*.45);
     const size=.72+.37*(.5+.5*Math.sin(k*5.2));obj.scale.set(size,size,size);obj.updateMatrix();leaves.setMatrixAt(k,obj.matrix);
-    leaves.setColorAt(k,new THREE.Color().setHSL(.26+(k%5)*.01,.58,.30+(k%6)*.025));
+    leaves.setColorAt(k,new THREE.Color().setRGB(.65+(k%4)*.055,.82+(k%3)*.05,.61+(k%5)*.04));
   }
   leaves.instanceMatrix.needsUpdate=true;stalks.instanceMatrix.needsUpdate=true;leaves.instanceColor.needsUpdate=true;
   leaves.castShadow=true;leaves.receiveShadow=true;stalks.castShadow=true;stalks.receiveShadow=true;
@@ -327,7 +327,7 @@ export function buildExtras(ctx) {
   register(plant, { kind: 'plant', index: 0, label: 'Water the plant' }, { dir: new THREE.Vector3(0, 0, 0), selectOffset: 0, hoverOffset: 0 });
   anchors.plant = () => plant.position.clone().add(new THREE.Vector3(0.3, 2.2 * growth, 0.3));
   let wiggle=0,photoPlant=null;
-  loadPhotographicProp('potted_plant_02',2.15).then(model=>{if(!model)return;photoPlant=model;plant.add(model);fallbackPlant.visible=false;model.scale.multiplyScalar(1+(growth-1)*.35);});
+  loadPhotographicProp('potted_plant_02',2.15,1.35,1.35).then(model=>{if(!model)return;photoPlant=model;plant.add(model);fallbackPlant.visible=false;model.scale.multiplyScalar(1+(growth-1)*.35);});
 
   // =====================================================================
   // Update + actions

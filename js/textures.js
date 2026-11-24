@@ -504,11 +504,12 @@ export function gardenTexture(night){
 let leafMap,ceramicMap;
 export function leafTexture(){
   if(leafMap)return leafMap;
-  const [c,x]=canvas(256,512),r=rng(9021);
-  const g=x.createLinearGradient(0,0,256,0);g.addColorStop(0,'#79905e');g.addColorStop(.46,'#c1ce9d');g.addColorStop(.51,'#a4bc86');g.addColorStop(1,'#66824f');x.fillStyle=g;x.fillRect(0,0,256,512);
-  const img=x.getImageData(0,0,256,512);for(let i=0;i<img.data.length;i+=4){const n=(r()-.5)*19;for(let k=0;k<3;k++)img.data[i+k]+=n;}x.putImageData(img,0,0);
-  x.strokeStyle='rgba(225,236,185,.65)';x.lineWidth=2.5;x.beginPath();x.moveTo(128,512);x.quadraticCurveTo(125,250,128,0);x.stroke();
-  for(let i=0;i<15;i++)for(const side of [-1,1]){const y=25+i*33;const end=128+side*(92+20*r());x.strokeStyle='rgba(222,234,176,.31)';x.lineWidth=1;x.beginPath();x.moveTo(128,y+24);x.quadraticCurveTo(128+side*45,y+4,end,y-32);x.stroke();
+  const [c,x]=canvas(512,1024),r=rng(9021);
+  x.scale(2,2);
+  const g=x.createLinearGradient(0,0,256,0);g.addColorStop(0,'#193e16');g.addColorStop(.46,'#537932');g.addColorStop(.51,'#365e22');g.addColorStop(1,'#22491b');x.fillStyle=g;x.fillRect(0,0,256,512);
+  const img=x.getImageData(0,0,512,1024);for(let i=0;i<img.data.length;i+=4){const n=(r()-.5)*19;for(let k=0;k<3;k++)img.data[i+k]+=n;}x.putImageData(img,0,0);
+  x.strokeStyle='rgba(157,186,96,.68)';x.lineWidth=2.5;x.beginPath();x.moveTo(128,512);x.quadraticCurveTo(125,250,128,0);x.stroke();
+  for(let i=0;i<15;i++)for(const side of [-1,1]){const y=25+i*33;const end=128+side*(92+20*r());x.strokeStyle='rgba(144,176,87,.35)';x.lineWidth=1;x.beginPath();x.moveTo(128,y+24);x.quadraticCurveTo(128+side*45,y+4,end,y-32);x.stroke();
     for(let k=1;k<4;k++){x.strokeStyle='rgba(49,83,34,.14)';x.beginPath();const px=128+side*k*22;x.moveTo(px,y+12-k*8);x.lineTo(px+side*14,y-24-k*4);x.stroke();}
   }
   return leafMap=toTexture(c,{aniso:4});
